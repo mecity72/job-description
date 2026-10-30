@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="light">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作說明書系統 ｜ 企業職位職掌與制度手冊</title>
+  <meta name="description" content="企業各部門職位工作說明書、職掌明細、公司職等對照表、升遷制度與績效考核評等標準系統。">
+  <link rel="icon" type="image/png" href="resource/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <div class="app-shell">
+
+    <!-- 左側固定導覽選單 -->
+    <aside id="appSidebar" class="app-sidebar" aria-label="側邊職位導覽選單">
+      <!-- 頂部品牌識別區（保留連續點擊 5 次解鎖管理員模式） -->
+      <div class="sidebar-brand-bar">
+        <a href="#/" class="brand-section">
+          <img src="resource/icon.png" alt="工作說明書系統" class="brand-logo-img">
+          <div class="brand-title-group">
+            <h1>工作說明書系統</h1>
+            <span>依職位查詢（內部管理版）</span>
+          </div>
+        </a>
+        <button type="button" id="sidebarCloseBtn" class="sidebar-close-btn" aria-label="關閉選單">&times;</button>
+      </div>
+
+      <!-- 主功能導覽項目 -->
+      <nav class="sidebar-primary-nav" aria-label="主要頁面導覽">
+        <a href="#/" id="navHomeLink" class="sidebar-nav-item active">
+          <span class="sidebar-item-icon home-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 10.5L12 3l9 7.5"></path>
+              <path d="M5 9.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"></path>
+              <path d="M9 20v-6h6v6"></path>
+            </svg>
+          </span>
+          <span class="sidebar-item-label">總覽首頁</span>
+        </a>
+
+        <a href="#/common" id="navCommonLink" class="sidebar-nav-item">
+          <span class="sidebar-item-icon policy-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+          </span>
+          <span class="sidebar-item-label">公司通用制度</span>
+        </a>
+
+        <a href="#/org" id="navOrgLink" class="sidebar-nav-item">
+          <span class="sidebar-item-icon org-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="2" width="6" height="5" rx="1"></rect>
+              <rect x="2" y="17" width="6" height="5" rx="1"></rect>
+              <rect x="9" y="17" width="6" height="5" rx="1"></rect>
+              <rect x="16" y="17" width="6" height="5" rx="1"></rect>
+              <path d="M12 7v5"></path>
+              <path d="M5 17v-3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3"></path>
+              <path d="M12 12v5"></path>
+            </svg>
+          </span>
+          <span class="sidebar-item-label">公司組織圖</span>
+        </a>
+      </nav>
+
+      <!-- 職位頁面分組標題 -->
+      <div class="sidebar-section-meta">
+        <span>職位頁面</span>
+        <span id="sidebarJobsCount">共 30 項</span>
+      </div>
+
+      <!-- 五大部門導覽選單（由 JavaScript 動態渲染並同步數量） -->
+      <div id="sidebarJobGroups" class="sidebar-groups-scroll">
+        <!-- 經由 JavaScript 動態載入 -->
+      </div>
+
+      <!-- 側邊欄底部系統資訊 -->
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-title">工作說明書管理系統 v1.0</div>
+        <div class="sidebar-footer-desc">支援 Google Sheets 雲端即時同步與離線快取瀏覽</div>
+      </div>
+    </aside>
+
+    <!-- 行動裝置側邊欄遮罩 -->
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+    <!-- 右側主工作區 -->
+    <div class="app-workspace">
+
+      <!-- 頂部應用程式導航與工具列 -->
+      <header class="app-header">
+        <div class="header-container">
+          <div class="topbar-left">
+            <button type="button" id="sidebarToggleBtn" class="icon-btn mobile-menu-btn" title="展開側邊選單"
+              aria-label="展開側邊選單">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+
+            <!-- 頂部動態麵包屑路徑 -->
+            <nav id="topBreadcrumb" class="top-breadcrumb" aria-label="目前位置">
+              <span class="crumb-root">工作說明書系統</span>
+              <span class="crumb-sep">/</span>
+              <span class="crumb-current">總覽首頁</span>
+            </nav>
+          </div>
+
+          <div class="header-actions">
+            <!-- 頂部膠囊型即時搜尋列 -->
+            <div class="topbar-search-wrapper">
+              <span class="topbar-search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="20" y1="20" x2="16.2" y2="16.2"></line>
+                </svg>
+              </span>
+              <input type="text" id="jobSearchInput" class="topbar-search-input" placeholder="搜尋職位名稱、課室、工作項目或表單…"
+                autocomplete="off">
+            </div>
+
+            <!-- Google Sheets 連線狀態指示燈 -->
+            <div id="syncStatusIndicator" class="sync-indicator offline" title="點擊強制重新同步 Google Sheets">
+              <div class="sync-dot"></div>
+              <span class="sync-text">本機離線模式</span>
+            </div>
+
+            <!-- 系統設定鈕（預設隱藏，僅管理員模式解鎖顯示） -->
+            <button type="button" id="settingsBtn" class="icon-btn admin-only-btn" title="系統設定與 Google Sheets 串接（管理員專用）"
+              style="display: none;">
+              &#9881;
+            </button>
+
+            <!-- 深淺色切換鈕 -->
+            <button type="button" id="themeToggleBtn" class="icon-btn" title="切換主題色彩">
+              &#9790;
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- 主內容呈現區 -->
+      <main class="app-main">
+
+        <!-- 視圖 1：首頁 (30 個職位依課室導覽與搜尋) -->
+        <section id="viewHome" class="view-container active">
+          <!-- 白底淡綠漸層歡迎說明卡片 -->
+          <div class="welcome-card">
+            <h2 class="welcome-title">歡迎使用工作說明書系統</h2>
+            <p class="welcome-desc">
+              點選左側選單或下方各課室職位卡片，即可一次檢視該職位之核心職責、日常作業時段分配、主要工作項目、使用表單、執行頻率與管制重點。全廠共整合製造部（17 項）、技術部（6 項）、營業部（1 項）、管理部（4
+              項）及人資總務部（2 項）等 30 項組織職位；跨部門共用之職等對照表、升遷規範與績效評等標準集中於「公司通用制度」頁面。
+            </p>
+          </div>
+
+          <!-- 公司通用制度特寫橫幅 -->
+          <div class="common-system-banner" onclick="window.location.hash='#/common'">
+            <div class="common-banner-info">
+              <h3>公司通用制度（職等對照表・升遷制度・績效考核評等）</h3>
+              <p>涵蓋管理、技術、行政、業務四大職系加給對照表，與雙軌晉升資格條件及績效考核等第標準。</p>
+            </div>
+            <div class="common-banner-btn">
+              <span>查閱制度規範 &rarr;</span>
+            </div>
+          </div>
+
+          <!-- 職位清單標題與分類頁籤 -->
+          <div class="section-header">
+            <div class="section-title">
+              <span id="jobsSectionTitleText">各部門職位工作說明書</span>
+              <span id="jobsCountDisplay" class="section-count">共 30 個職位</span>
+            </div>
+
+            <div class="filter-tabs">
+              <button type="button" class="tab-btn active" data-filter="all">全部職位 (<span id="cntAll">30</span>)</button>
+              <button type="button" class="tab-btn" data-filter="mfg_dept">製造部 (<span id="cntMfg">17</span>)</button>
+              <button type="button" class="tab-btn" data-filter="tech_dept">技術部 (<span id="cntTech">6</span>)</button>
+              <button type="button" class="tab-btn" data-filter="sales_dept">營業部 (<span id="cntSales">1</span>)</button>
+              <button type="button" class="tab-btn" data-filter="mgmt_dept">管理部 (<span id="cntMgmt">4</span>)</button>
+              <button type="button" class="tab-btn" data-filter="hr_ga_dept">人資總務部 (<span
+                  id="cntHrGa">2</span>)</button>
+            </div>
+          </div>
+
+          <!-- 依各課室分組排列之職位卡片區 -->
+          <div id="jobsGrid" class="jobs-sections-container">
+            <!-- 經由 JavaScript 動態載入 -->
+          </div>
+        </section>
+
+        <!-- 視圖 2：單一職位工作說明書詳細頁 -->
+        <section id="viewJobDetail" class="view-container">
+          <div id="jobDetailContent">
+            <!-- 經由 JavaScript 動態載入 -->
+          </div>
+        </section>
+
+        <!-- 視圖 3：公司通用制度頁面 -->
+        <section id="viewCommonSystem" class="view-container">
+          <div id="commonSystemContent" class="common-system-container">
+            <!-- 經由 JavaScript 動態載入 -->
+          </div>
+        </section>
+
+        <!-- 視圖 4：公司組織圖頁面（預留擴充） -->
+        <section id="viewOrgChart" class="view-container">
+          <div id="orgChartContent" class="org-chart-container">
+            <!-- 經由 JavaScript 動態載入 -->
+          </div>
+        </section>
+
+      </main>
+
+      <!-- 頁尾宣告 -->
+      <footer class="app-footer">
+        <div class="footer-inner">
+          <p>工作說明書系統 &copy; 內部管理專用 ｜ 支援 Google Sheets 雲端即時同步與離線模式</p>
+        </div>
+      </footer>
+
+    </div>
+  </div>
+
+  <!-- 管理員通行碼驗證彈窗 -->
+  <div id="adminAuthModal" class="modal-backdrop">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="admin-badge">權限驗證</span>
+          <h3 style="margin: 0; font-size: 1.1rem;">管理員模式解鎖</h3>
+        </div>
+        <button type="button" id="closeAdminAuthBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5;">
+          系統設定與 Google Apps Script 雲端端點已鎖定。請輸入管理員通行碼以解鎖管理面板。
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="adminPinInput">管理員通行碼 (Admin PIN)</label>
+          <input type="password" id="adminPinInput" class="form-input" placeholder="請輸入通行碼（預設：8888）…" maxlength="30"
+            autocomplete="off">
+          <div id="adminAuthError"
+            style="font-size: 0.82rem; color: var(--status-danger); margin-top: 6px; font-weight: 600; min-height: 20px;">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cancelAdminAuthBtn" class="action-btn">取消</button>
+        <button type="button" id="submitAdminAuthBtn" class="action-btn primary">解鎖進入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 系統設定彈窗 (Google Apps Script 設定) -->
+  <div id="settingsModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="admin-badge">管理員專用</span>
+          <h3 style="margin: 0;">系統設定與 Google Sheets 串接</h3>
+        </div>
+        <button type="button" id="closeSettingsBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="form-label" for="gasUrlInput" style="margin-bottom: 0;">Google Apps Script Web App 網址</label>
+            <button type="button" id="toggleGasUrlVisibilityBtn" class="text-link-btn">顯示網址</button>
+          </div>
+          <input type="password" id="gasUrlInput" class="form-input"
+            placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+          <p class="form-help">
+            此端點由系統管理員維護。一般訪客介面已隱藏此入口與網址，防止非授權存取。
+          </p>
+        </div>
+        <div id="testConnectionResult" style="font-size: 0.88rem; font-weight: 600; min-height: 24px;"></div>
+
+        <!-- 後端快取快照手動管理區 -->
+        <div class="cache-control-card">
+          <div class="cache-control-info">
+            <div class="cache-control-title">後端快取快照控制</div>
+            <div class="cache-control-desc">Google Apps Script 雙層快取已啟用。若試算表有手動外部修改，可點擊立即全量重建快照。</div>
+          </div>
+          <button type="button" id="refreshCacheBtn" class="action-btn"
+            style="white-space: nowrap; font-size: 0.82rem; padding: 6px 14px;">重建快照快取</button>
+        </div>
+        <div id="cacheControlResult" style="font-size: 0.82rem; font-weight: 600; min-height: 18px; margin-top: 6px;">
+        </div>
+
+        <!-- 多試算表直接編輯連結入口 -->
+        <div id="departmentSpreadsheetsSection"
+          style="margin-top: 16px; border-top: 1px solid var(--border-light); padding-top: 14px; display: none;">
+          <h4 style="font-size: 0.92rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">各部門 Google
+            試算表直接編輯入口</h4>
+          <div id="deptSpreadsheetsList" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="logoutAdminBtn" class="action-btn danger-outline"
+          style="margin-right: auto;">退出管理員模式</button>
+        <button type="button" id="testSettingsBtn" class="action-btn">測試連線</button>
+        <button type="button" id="saveSettingsBtn" class="action-btn primary">儲存並同步</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 引入模組腳本 -->
+  <script src="env.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,1940 @@
+/* ==========================================================================
+   工作說明書系統 - 全域核心樣式表 (Design Tokens & Styles)
+   設計風格：專業工程、乾淨簡潔、現代高質感、微動態與雙主題支援
+   ========================================================================== */
+
+:root {
+  /* 字型系統 */
+  --font-base: "Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Noto Serif TC", "Source Han Serif TC", "Songti TC", "STSong", Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* 主題色盤 (Light Mode - 清爽白綠管理介面) */
+  --bg-app: #f6faf8;
+  --bg-sidebar: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #eef6f3;
+  --bg-surface-hover: #e2f0eb;
+  
+  --text-main: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+
+  --border-light: #e0ece8;
+  --border-medium: #c5dad3;
+  --border-focus: #0d9488;
+
+  --brand-primary: #0d9488;
+  --brand-primary-hover: #0f766e;
+  --brand-primary-light: #d1fae5;
+  --brand-primary-ink: #065f46;
+
+  --brand-accent: #0284c7;
+  --brand-accent-light: #e0f2fe;
+
+  --welcome-bg: linear-gradient(120deg, #ffffff 30%, #e6f9f1 100%);
+  --welcome-border: #d5efe5;
+
+  --status-good: #16a34a;
+  --status-good-bg: #dcfce7;
+  --status-warn: #d97706;
+  --status-warn-bg: #fef3c7;
+  --status-danger: #dc2626;
+  --status-danger-bg: #fee2e2;
+
+  /* 視覺陰影與圓角 */
+  --shadow-sm: 0 2px 6px rgba(15, 42, 36, 0.04);
+  --shadow-md: 0 6px 16px -2px rgba(15, 42, 36, 0.07), 0 2px 6px -2px rgba(15, 42, 36, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(15, 42, 36, 0.1), 0 4px 8px -4px rgba(15, 42, 36, 0.05);
+  --shadow-float: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* 尺寸常數 */
+  --sidebar-width: 276px;
+  --header-height: 64px;
+  --container-max-width: 1180px;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+}
+
+/* 深色主題 (Dark Mode) */
+[data-theme="dark"] {
+  --bg-app: #090e17;
+  --bg-sidebar: #0d1524;
+  --bg-surface: #111a2e;
+  --bg-surface-alt: #1a263f;
+  --bg-surface-hover: #233454;
+
+  --text-main: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #8496b0;
+  --text-inverse: #090e17;
+
+  --border-light: #1f2d47;
+  --border-medium: #2a3c5d;
+  --border-focus: #14b8a6;
+
+  --brand-primary: #14b8a6;
+  --brand-primary-hover: #2dd4bf;
+  --brand-primary-light: #133836;
+  --brand-primary-ink: #6ee7b7;
+
+  --brand-accent: #38bdf8;
+  --brand-accent-light: #082f49;
+
+  --welcome-bg: linear-gradient(120deg, #111a2e 30%, #102a2e 100%);
+  --welcome-border: #1e3a3f;
+
+  --status-good: #4ade80;
+  --status-good-bg: #064e3b;
+  --status-warn: #fbbf24;
+  --status-warn-bg: #451a03;
+  --status-danger: #f87171;
+  --status-danger-bg: #450a0a;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --shadow-float: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+}
+
+/* 基本重置 */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 15px;
+  line-height: 1.6;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-base);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 連結與按鈕共用 */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  outline: none;
+}
+
+/* ==========================================================================
+   雙欄式應用程式外殼 (App Shell: 左側固定選單 + 右側工作區)
+   ========================================================================== */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* 左側固定側邊欄 */
+.app-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  z-index: 120;
+  transition: background-color var(--transition-normal), border-color var(--transition-normal), transform var(--transition-normal);
+}
+
+.sidebar-brand-bar {
+  padding: 18px 16px 16px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.brand-logo-img {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: contain;
+  display: block;
+}
+
+.brand-title-group {
+  min-width: 0;
+}
+
+.brand-title-group h1 {
+  font-family: var(--font-serif);
+  font-size: 1.12rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brand-title-group span {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-close-btn {
+  display: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  font-size: 1.35rem;
+  color: var(--text-muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-close-btn:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-main);
+}
+
+/* 左側主導覽項目（總覽首頁 / 公司通用制度） */
+.sidebar-primary-nav {
+  padding: 12px 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-nav-item:hover {
+  background-color: var(--bg-surface-alt);
+  color: var(--text-main);
+}
+
+.sidebar-nav-item.active {
+  background-color: var(--brand-primary-light);
+  color: var(--brand-primary-ink);
+}
+
+.sidebar-item-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-item-icon.home-icon {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.sidebar-item-icon.policy-icon {
+  background-color: #ede9fe;
+  color: #6d28d9;
+}
+
+.sidebar-item-icon.org-icon {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+[data-theme="dark"] .sidebar-item-icon.policy-icon {
+  background-color: #2e1065;
+  color: #c4b5fd;
+}
+
+[data-theme="dark"] .sidebar-item-icon.org-icon {
+  background-color: #172554;
+  color: #93c5fd;
+}
+
+.sidebar-item-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* 職位頁面分區標籤 */
+.sidebar-section-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+/* 左側五大部門導覽清單 */
+.sidebar-groups-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 14px;
+}
+
+.sidebar-groups-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-groups-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--border-medium);
+  border-radius: 9999px;
+}
+
+.sidebar-dept-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sidebar-dept-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-dept-link:hover {
+  background-color: var(--bg-surface-alt);
+  color: var(--text-main);
+}
+
+.sidebar-dept-link.active {
+  background-color: var(--brand-primary-light);
+  color: var(--brand-primary-ink);
+  font-weight: 700;
+}
+
+.sidebar-dept-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-job-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-job-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar-job-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 職位圖標柔和色塊系統（側邊欄與右側卡片共用） */
+.icon-mgmt {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.icon-pkg {
+  background-color: #ffedd5;
+  color: #c2410c;
+}
+
+.icon-chem {
+  background-color: #e0e7ff;
+  color: #4338ca;
+}
+
+.icon-check {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.icon-tool {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.icon-admin {
+  background-color: #ccfbf1;
+  color: #0f766e;
+}
+
+[data-theme="dark"] .icon-mgmt { background-color: #3b2a0a; color: #fbbf24; }
+[data-theme="dark"] .icon-pkg { background-color: #3b1c0a; color: #fb923c; }
+[data-theme="dark"] .icon-chem { background-color: #1e1b4b; color: #a5b4fc; }
+[data-theme="dark"] .icon-check { background-color: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .icon-tool { background-color: #0c4a6e; color: #7dd3fc; }
+[data-theme="dark"] .icon-admin { background-color: #134e4a; color: #5eead4; }
+
+/* 側邊欄底部說明列 */
+.sidebar-footer {
+  border-top: 1px solid var(--border-light);
+  padding: 12px 16px;
+  background-color: var(--bg-sidebar);
+}
+
+.sidebar-footer-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.sidebar-footer-desc {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+/* ==========================================================================
+   右側主工作區與頂部狀態列
+   ========================================================================== */
+.app-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  height: var(--header-height);
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  transition: background-color var(--transition-normal), border-color var(--transition-normal);
+}
+
+.header-container {
+  height: 100%;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-menu-btn {
+  display: none;
+}
+
+.top-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-breadcrumb .crumb-link {
+  color: var(--text-muted);
+  font-weight: 600;
+  transition: color var(--transition-fast);
+}
+
+.top-breadcrumb .crumb-link:hover {
+  color: var(--brand-primary);
+}
+
+.top-breadcrumb .crumb-root,
+.top-breadcrumb .crumb-mid {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.top-breadcrumb .crumb-sep {
+  color: var(--border-medium);
+}
+
+.top-breadcrumb .crumb-current {
+  color: var(--text-main);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* 頂部膠囊型即時搜尋列 */
+.topbar-search-wrapper {
+  position: relative;
+  width: 280px;
+}
+
+.topbar-search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--brand-primary);
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.topbar-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 14px 0 36px;
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  background-color: var(--bg-surface-alt);
+  color: var(--text-main);
+  font-size: 0.86rem;
+  transition: all var(--transition-fast);
+}
+
+.topbar-search-input:focus {
+  outline: none;
+  background-color: var(--bg-surface);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.14);
+}
+
+/* 狀態指示燈 */
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background-color: var(--bg-surface-alt);
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  transition: background-color var(--transition-normal);
+}
+
+.sync-indicator.connected .sync-dot {
+  background-color: var(--status-good);
+  box-shadow: 0 0 6px var(--status-good);
+}
+
+.sync-indicator.loading .sync-dot {
+  background-color: var(--status-warn);
+  animation: pulse 1s infinite alternate;
+}
+
+.sync-indicator.offline .sync-dot {
+  background-color: var(--text-muted);
+}
+
+.sync-indicator.error .sync-dot {
+  background-color: var(--status-danger);
+}
+
+@keyframes pulse {
+  0% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+/* 工具按鈕 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-main);
+  border-color: var(--border-medium);
+}
+
+/* 主要內容容器 */
+.app-main {
+  flex: 1;
+  max-width: var(--container-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 32px 56px;
+}
+
+/* 部門直接檢視模式：隱藏首頁歡迎橫幅，讓選取部門內容直接置頂 */
+#viewHome.dept-focus-mode .welcome-card,
+#viewHome.dept-focus-mode .common-system-banner {
+  display: none;
+}
+
+/* 白底淡綠漸層歡迎說明卡片（參考圖 1 樣式） */
+.welcome-card {
+  background: var(--welcome-bg);
+  border: 1px solid var(--welcome-border);
+  border-radius: var(--radius-xl);
+  padding: 28px 32px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.welcome-title {
+  font-family: var(--font-serif);
+  font-size: 1.65rem;
+  font-weight: 900;
+  color: var(--text-main);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+.welcome-desc {
+  font-size: 0.96rem;
+  color: var(--text-secondary);
+  line-height: 1.75;
+  max-width: 920px;
+}
+
+/* 通用制度特寫橫幅 */
+.common-system-banner {
+  background: linear-gradient(135deg, #0f766e, #0e7490);
+  color: #ffffff;
+  border-radius: var(--radius-lg);
+  padding: 20px 28px;
+  margin-bottom: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.common-system-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.common-banner-info h3 {
+  font-family: var(--font-serif);
+  font-size: 1.24rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+
+.common-banner-info p {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.common-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  background-color: #ffffff;
+  color: #0f766e;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  transition: background-color var(--transition-fast);
+}
+
+.common-system-banner:hover .common-banner-btn {
+  background-color: #f0fdfa;
+}
+
+/* 分類導覽與部門篩選頁籤 */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.section-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#jobsSectionTitleText {
+  font-family: var(--font-serif);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.section-count {
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background-color: var(--bg-surface-alt);
+  color: var(--text-muted);
+}
+
+.filter-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  background-color: var(--bg-surface-alt);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+
+.tab-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+}
+
+.tab-btn.active {
+  background-color: var(--bg-surface);
+  color: var(--brand-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ==========================================================================
+   依各課室排列之職位區塊與雙欄卡片（參考圖 2 融合樣式）
+   ========================================================================== */
+.jobs-sections-container {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.dept-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dept-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.dept-section-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.dept-section-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.dept-jobs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.job-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.job-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-medium);
+}
+
+.job-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.job-card-meta-left {
+  min-width: 0;
+  flex: 1;
+}
+
+.job-card-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: #dcfce7;
+  color: #0d9488;
+}
+
+.job-card-icon-box.icon-mgmt { background-color: #d6f5eb; color: #b45309; }
+.job-card-icon-box.icon-pkg { background-color: #d6f5eb; color: #b45309; }
+.job-card-icon-box.icon-chem { background-color: #d6f5eb; color: #4338ca; }
+.job-card-icon-box.icon-check { background-color: #d6f5eb; color: #0f766e; }
+.job-card-icon-box.icon-tool { background-color: #d6f5eb; color: #0369a1; }
+.job-card-icon-box.icon-admin { background-color: #d6f5eb; color: #0f766e; }
+
+[data-theme="dark"] .job-card-icon-box {
+  background-color: #133836;
+  color: #5eead4;
+}
+
+.job-dept-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-alt);
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.job-dept-tag.mfg_dept,
+.job-dept-tag.manufacturing {
+  background-color: var(--brand-primary-light);
+  color: var(--brand-primary-ink);
+}
+
+.job-dept-tag.tech_dept,
+.job-dept-tag.tech_rd {
+  background-color: var(--brand-accent-light);
+  color: #0369a1;
+}
+
+.job-dept-tag.sales_dept {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.job-dept-tag.mgmt_dept {
+  background-color: #ede9fe;
+  color: #5b21b6;
+}
+
+.job-dept-tag.hr_ga_dept,
+.job-dept-tag.admin_sales {
+  background-color: #fce7f3;
+  color: #9d174d;
+}
+
+.job-card-title {
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  line-height: 1.35;
+}
+
+.job-card-overview {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-card-footer {
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.job-card-footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.job-grade-tag {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.job-tasks-stat {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.job-view-arrow {
+  color: var(--brand-primary);
+  font-weight: 700;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.empty-search-state {
+  text-align: center;
+  padding: 56px 20px;
+  background-color: var(--bg-surface);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+}
+
+.empty-search-title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.empty-search-sub {
+  font-size: 0.88rem;
+  margin-top: 6px;
+}
+
+/* ==========================================================================
+   內頁：職位工作說明書詳細頁面
+   ========================================================================== */
+.view-container {
+  display: none;
+}
+
+.view-container.active {
+  display: block;
+}
+
+/* 麵包屑導航 */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+.breadcrumb a {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+/* 詳細頁抬頭區 */
+.job-header-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.job-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.job-header-titles h2 {
+  font-family: var(--font-serif);
+  font-size: 1.95rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  line-height: 1.25;
+  margin-bottom: 6px;
+}
+
+.job-header-titles .dept-label {
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.job-actions-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: 1px solid var(--border-medium);
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-main);
+}
+
+.action-btn.primary {
+  background-color: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #ffffff;
+}
+
+.action-btn.primary:hover {
+  background-color: var(--brand-primary-hover);
+}
+
+/* 規格清單網格 */
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  background-color: var(--bg-surface-alt);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+}
+
+.spec-item .spec-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.spec-item .spec-value {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* 職責與資格卡片 */
+.info-block {
+  margin-top: 18px;
+}
+
+.info-block h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.info-block p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 證照標籤列 */
+.cert-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cert-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  background-color: var(--brand-primary-light);
+  color: var(--brand-primary-ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+}
+
+/* 主要工作項目表格 */
+.table-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+#jobDetailContent > *:last-child {
+  margin-bottom: 0;
+}
+
+.table-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.table-card-header h3 {
+  font-family: var(--font-serif);
+  font-size: 1.38rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.jd-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+.jd-table th {
+  background-color: var(--bg-surface-alt);
+  color: var(--text-main);
+  font-weight: 700;
+  padding: 14px 16px;
+  border-bottom: 1.5px solid var(--border-medium);
+  white-space: nowrap;
+}
+
+.jd-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+
+.jd-table tbody tr:hover {
+  background-color: var(--bg-surface-alt);
+}
+
+.jd-table .col-idx {
+  width: 60px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.jd-table .col-item {
+  min-width: 260px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.jd-table .col-form {
+  min-width: 140px;
+}
+
+.jd-table .col-timing {
+  min-width: 110px;
+  white-space: nowrap;
+}
+
+.jd-table .col-focus {
+  min-width: 280px;
+}
+
+.timing-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-alt);
+  border: 1px solid var(--border-light);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   內頁：公司通用制度 (職等對照表、升遷、績效評等)
+   ========================================================================== */
+.common-system-container {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.policy-block {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.policy-block-header {
+  margin-bottom: 24px;
+}
+
+.policy-block-header h3 {
+  font-family: var(--font-serif);
+  font-size: 1.55rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  margin-bottom: 6px;
+}
+
+.policy-block-header p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   內頁：公司組織圖（預留擴充頁面）
+   ========================================================================== */
+.org-placeholder-card {
+  text-align: left;
+}
+
+.org-placeholder-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background-color: var(--brand-primary-light);
+  color: var(--brand-primary-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.org-placeholder-title {
+  font-family: var(--font-serif);
+  font-size: 1.65rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  margin-bottom: 10px;
+}
+
+.org-placeholder-desc {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  max-width: 780px;
+  margin-bottom: 26px;
+}
+
+.org-dept-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--border-medium);
+}
+
+.org-dept-node {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background-color: var(--bg-surface-alt);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.org-dept-node:hover {
+  background-color: var(--bg-surface);
+  border-color: var(--border-focus);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+
+.org-dept-node-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.org-dept-node-name {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.org-dept-node-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* 職等對照表特定欄位樣式 */
+.grade-table th {
+  text-align: center;
+}
+
+.grade-table td {
+  text-align: center;
+}
+
+.grade-table td.col-grade {
+  font-weight: 700;
+  color: var(--text-main);
+  background-color: var(--bg-surface-alt);
+}
+
+.grade-table .bonus-text {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--brand-primary);
+}
+
+/* 升遷階梯格狀區 */
+.promotion-steps-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.step-card {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  background-color: var(--bg-surface-alt);
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.step-indicator {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--brand-primary);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.step-content h4 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.step-criteria-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+
+.step-criteria-row span strong {
+  color: var(--text-main);
+}
+
+/* 績效考核評等卡片 */
+.kpi-ratings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.kpi-card {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  background-color: var(--bg-surface-alt);
+  position: relative;
+}
+
+.kpi-grade-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.kpi-grade-badge.s { background-color: #fef08a; color: #854d0e; }
+.kpi-grade-badge.a { background-color: var(--brand-primary-light); color: var(--brand-primary-ink); }
+.kpi-grade-badge.b { background-color: var(--brand-accent-light); color: #0369a1; }
+.kpi-grade-badge.c { background-color: #fee2e2; color: #991b1b; }
+.kpi-grade-badge.d { background-color: #e2e8f0; color: #475569; }
+
+.kpi-ratio {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.kpi-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.kpi-reward {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-main);
+  border-top: 1px dashed var(--border-medium);
+  padding-top: 10px;
+}
+
+/* ==========================================================================
+   系統設定彈窗 (Modal Dialog)
+   ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 580px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  box-shadow: var(--shadow-float);
+  transform: scale(0.95);
+  transition: transform var(--transition-fast);
+}
+
+.modal-backdrop.open .modal-card {
+  transform: scale(1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.modal-close-btn {
+  font-size: 1.4rem;
+  color: var(--text-muted);
+}
+
+.modal-body {
+  margin-bottom: 24px;
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text-main);
+}
+
+.form-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-family: var(--font-mono);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.form-help {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 頁尾 */
+.app-footer {
+  border-top: 1px solid var(--border-light);
+  background-color: var(--bg-surface);
+  padding: 20px 0;
+  margin-top: auto;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.footer-inner {
+  max-width: var(--container-max-width);
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* ==========================================================================
+   列印專用樣式 (Print Stylesheet)
+   ========================================================================== */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  .app-sidebar,
+  .sidebar-backdrop,
+  .app-header,
+  .welcome-card,
+  .common-system-banner,
+  .filter-tabs,
+  .job-actions-toolbar,
+  .breadcrumb,
+  .app-footer,
+  .modal-backdrop {
+    display: none !important;
+  }
+  .app-shell,
+  .app-workspace {
+    display: block !important;
+    min-height: 0 !important;
+  }
+  .app-main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .job-header-card,
+  .schedule-card,
+  .notes-card,
+  .table-card,
+  .policy-block {
+    box-shadow: none !important;
+    border: 1px solid #999999 !important;
+    border-radius: 0 !important;
+    page-break-inside: avoid;
+    margin-bottom: 20px !important;
+  }
+  .jd-table th,
+  .jd-table td,
+  .schedule-table th,
+  .schedule-table td {
+    border: 1px solid #999999 !important;
+    color: #000000 !important;
+  }
+}
+
+/* 響應式微調：平板與窄視窗改為抽屜式選單 */
+@media (max-width: 960px) {
+  .app-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-float);
+  }
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .sidebar-close-btn {
+    display: inline-flex;
+  }
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    z-index: 115;
+    display: block;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-fast);
+  }
+  .sidebar-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+  .header-container {
+    padding: 0 18px;
+  }
+  .app-main {
+    padding: 22px 20px 44px;
+  }
+  .topbar-search-wrapper {
+    width: 210px;
+  }
+}
+
+/* 響應式微調：手機版單欄配置 */
+@media (max-width: 768px) {
+  .welcome-card {
+    padding: 22px 20px;
+  }
+  .welcome-title {
+    font-size: 1.35rem;
+  }
+  .dept-jobs-grid {
+    grid-template-columns: 1fr;
+  }
+  .common-system-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px;
+  }
+  .sync-indicator .sync-text {
+    display: none;
+  }
+  .sync-indicator {
+    padding: 6px 10px;
+  }
+  .topbar-search-wrapper {
+    width: 165px;
+  }
+}
+
+/* 日常工作時間分配與注意事項卡片 */
+.schedule-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.schedule-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.schedule-card-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.schedule-table th, .schedule-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+}
+
+.schedule-table th {
+  background-color: var(--bg-surface-alt);
+  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.schedule-table td.col-time {
+  vertical-align: top;
+  width: 150px;
+}
+
+.time-badge {
+  display: inline-block;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--brand-primary-ink);
+  background-color: var(--brand-primary-light);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.schedule-table td.col-task {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.notes-card {
+  background-color: #fffbeb;
+  border: 1px solid #fef3c7;
+  border-left: 5px solid #f59e0b;
+  border-radius: var(--radius-lg);
+  padding: 22px 26px;
+  margin-bottom: 28px;
+}
+
+[data-theme="dark"] .notes-card {
+  background-color: #291f05;
+  border-color: #453408;
+  border-left-color: #f59e0b;
+}
+
+.notes-card h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #b45309;
+  margin-bottom: 12px;
+}
+
+[data-theme="dark"] .notes-card h4 {
+  color: #fbbf24;
+}
+
+.notes-list {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.notes-list li {
+  font-size: 0.93rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.notes-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
+   管理員模式與快照控制元件樣式
+   ========================================================================== */
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background-color: var(--brand-accent-light);
+  color: var(--brand-accent);
+  border: 1px solid var(--brand-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.text-link-btn {
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  transition: color var(--transition-fast);
+}
+
+.text-link-btn:hover {
+  color: var(--brand-primary-hover);
+}
+
+.cache-control-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--bg-surface-alt);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cache-control-info {
+  flex: 1;
+}
+
+.cache-control-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-main);
+}
+
+.cache-control-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.action-btn.danger-outline {
+  background: transparent;
+  color: var(--status-danger);
+  border: 1px solid var(--status-danger);
+}
+
+.action-btn.danger-outline:hover {
+  background: var(--status-danger-bg);
+}
+
+
