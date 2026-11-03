@@ -134,18 +134,6 @@
                 autocomplete="off">
             </div>
 
-            <!-- Google Sheets 連線狀態指示燈 -->
-            <div id="syncStatusIndicator" class="sync-indicator offline" title="點擊強制重新同步 Google Sheets">
-              <div class="sync-dot"></div>
-              <span class="sync-text">本機離線模式</span>
-            </div>
-
-            <!-- 系統設定鈕（預設隱藏，僅管理員模式解鎖顯示） -->
-            <button type="button" id="settingsBtn" class="icon-btn admin-only-btn" title="系統設定與 Google Sheets 串接（管理員專用）"
-              style="display: none;">
-              &#9881;
-            </button>
-
             <!-- 深淺色切換鈕 -->
             <button type="button" id="themeToggleBtn" class="icon-btn" title="切換主題色彩">
               &#9790;
@@ -236,96 +224,12 @@
     </div>
   </div>
 
-  <!-- 管理員通行碼驗證彈窗 -->
-  <div id="adminAuthModal" class="modal-backdrop">
-    <div class="modal-card" style="max-width: 420px;">
-      <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="admin-badge">權限驗證</span>
-          <h3 style="margin: 0; font-size: 1.1rem;">管理員模式解鎖</h3>
-        </div>
-        <button type="button" id="closeAdminAuthBtn" class="modal-close-btn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5;">
-          系統設定與 Google Apps Script 雲端端點已鎖定。請輸入管理員通行碼以解鎖管理面板。
-        </p>
-        <div class="form-group">
-          <label class="form-label" for="adminPinInput">管理員通行碼 (Admin PIN)</label>
-          <input type="password" id="adminPinInput" class="form-input" placeholder="請輸入通行碼（預設：8888）…" maxlength="30"
-            autocomplete="off">
-          <div id="adminAuthError"
-            style="font-size: 0.82rem; color: var(--status-danger); margin-top: 6px; font-weight: 600; min-height: 20px;">
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" id="cancelAdminAuthBtn" class="action-btn">取消</button>
-        <button type="button" id="submitAdminAuthBtn" class="action-btn primary">解鎖進入</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 系統設定彈窗 (Google Apps Script 設定) -->
-  <div id="settingsModal" class="modal-backdrop">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="admin-badge">管理員專用</span>
-          <h3 style="margin: 0;">系統設定與 Google Sheets 串接</h3>
-        </div>
-        <button type="button" id="closeSettingsBtn" class="modal-close-btn">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label class="form-label" for="gasUrlInput" style="margin-bottom: 0;">Google Apps Script Web App 網址</label>
-            <button type="button" id="toggleGasUrlVisibilityBtn" class="text-link-btn">顯示網址</button>
-          </div>
-          <input type="password" id="gasUrlInput" class="form-input"
-            placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
-          <p class="form-help">
-            此端點由系統管理員維護。一般訪客介面已隱藏此入口與網址，防止非授權存取。
-          </p>
-        </div>
-        <div id="testConnectionResult" style="font-size: 0.88rem; font-weight: 600; min-height: 24px;"></div>
-
-        <!-- 後端快取快照手動管理區 -->
-        <div class="cache-control-card">
-          <div class="cache-control-info">
-            <div class="cache-control-title">後端快取快照控制</div>
-            <div class="cache-control-desc">Google Apps Script 雙層快取已啟用。若試算表有手動外部修改，可點擊立即全量重建快照。</div>
-          </div>
-          <button type="button" id="refreshCacheBtn" class="action-btn"
-            style="white-space: nowrap; font-size: 0.82rem; padding: 6px 14px;">重建快照快取</button>
-        </div>
-        <div id="cacheControlResult" style="font-size: 0.82rem; font-weight: 600; min-height: 18px; margin-top: 6px;">
-        </div>
-
-        <!-- 多試算表直接編輯連結入口 -->
-        <div id="departmentSpreadsheetsSection"
-          style="margin-top: 16px; border-top: 1px solid var(--border-light); padding-top: 14px; display: none;">
-          <h4 style="font-size: 0.92rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">各部門 Google
-            試算表直接編輯入口</h4>
-          <div id="deptSpreadsheetsList" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" id="logoutAdminBtn" class="action-btn danger-outline"
-          style="margin-right: auto;">退出管理員模式</button>
-        <button type="button" id="testSettingsBtn" class="action-btn">測試連線</button>
-        <button type="button" id="saveSettingsBtn" class="action-btn primary">儲存並同步</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 引入模組腳本 -->
-  <script src="env.js"></script>
-  <script src="js/data.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/app.js"></script>
+  <!-- 引入模組腳本（加入版本控制避免快取） -->
+  <script src="env.js?v=20261103_5"></script>
+  <script src="js/data.js?v=20261103_5"></script>
+  <script src="js/config.js?v=20261103_5"></script>
+  <script src="js/api.js?v=20261103_5"></script>
+  <script src="js/app.js?v=20261103_5"></script>
 </body>
 
 </html>
