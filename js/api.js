@@ -1,13 +1,12 @@
 /**
  * 工作說明書系統 - API 通訊模組 (API Service)
- * 實作 Stale-While-Revalidate (SWR) 本地優先快取與雙向同步機制
+ * 實作直連 Google Apps Script + 本地快照持久化 (SWR) + 智慧防跳變架構
  */
 
 const JobApi = (function () {
-  const STORAGE_KEY_SWR_DATA = "JD_SWR_CACHE_DATA";
-  const STORAGE_KEY_SWR_TIME = "JD_SWR_CACHE_TIME";
+  const STORAGE_SNAPSHOT_KEY = "JD_PERSISTED_SNAPSHOT_V3";
 
-  let connectionStatus = "offline"; // "connected" | "offline" | "loading" | "error"
+  let connectionStatus = "offline";
   let cachedJobs = null;
   let cachedCommonSystem = null;
   let cachedDepartments = [];
@@ -26,60 +25,55 @@ const JobApi = (function () {
   }
 
   /**
-   * 讀取本地 SWR 快取資料
+   * 取得初始職位資料（優先讀取上次同步成功之 localStorage 快照，杜絕舊畫面跳變）
    */
-  function loadLocalCache() {
+  function getInitialJobs() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_SWR_DATA);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
-        return {
-          jobs: mergeJobsWithLocal(parsed.jobs, getDefaultJobs()),
-          commonSystem: parsed.commonSystem || getDefaultCompanySystem(),
-          departments: parsed.departments || [],
-          timestamp: localStorage.getItem(STORAGE_KEY_SWR_TIME) || ""
-        };
+      const raw = localStorage.getItem(STORAGE_SNAPSHOT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
+          return mergeJobsWithLocal(parsed.jobs, getDefaultJobs());
+        }
       }
     } catch (e) {
-      console.warn("解析本地 SWR 快取失敗：", e);
+      console.warn("讀取持久化快照失敗：", e);
     }
-    return null;
+    return JSON.parse(JSON.stringify(getDefaultJobs()));
   }
 
   /**
-   * 寫入本地 SWR 快取資料
+   * 持久化儲存最新快照至 localStorage
    */
-  function saveLocalCache(payload) {
+  function persistSnapshot(jobs) {
     try {
-      const cacheObj = {
-        jobs: payload.jobs,
-        commonSystem: payload.commonSystem,
-        departments: payload.departments
-      };
-      localStorage.setItem(STORAGE_KEY_SWR_DATA, JSON.stringify(cacheObj));
-      localStorage.setItem(STORAGE_KEY_SWR_TIME, new Date().toISOString());
+      localStorage.setItem(STORAGE_SNAPSHOT_KEY, JSON.stringify({
+        timestamp: new Date().toISOString(),
+        jobs: jobs
+      }));
     } catch (e) {
-      console.warn("寫入本地 SWR 快取失敗：", e);
+      // 避免 quota 超限
     }
   }
 
   /**
-   * 載入全系統資料（SWR 架構）
+   * 載入全系統資料
    * 策略：
-   * 1. 非強制重整時，若本地已有快取立即以 0 秒速度回傳並渲染畫面。
-   * 2. 背景靜默向 Google Apps Script 發出驗證請求，資料更新時觸發 onDataUpdated 回呼與自訂事件。
-   * 3. 若為強制重整，則直接請求遠端並覆蓋本地快取。
+   * 1. 0 秒秒開：優先讀取已持久化之最新快照，若無則以本機靜態資料庫呈現。
+   * 2. 背景靜默驗證：背景向 Google Apps Script 發出請求，實質比對有差異才無感套用。
    */
   async function loadAllData(forceRefresh, onDataUpdated) {
     const gasUrl = AppConfig.getGasUrl();
 
-    // 若未設定 GAS 網址，使用本機預設資料庫
+    if (!cachedJobs) {
+      cachedJobs = getInitialJobs();
+    }
+    if (!cachedCommonSystem) {
+      cachedCommonSystem = JSON.parse(JSON.stringify(getDefaultCompanySystem()));
+    }
+
     if (!gasUrl || gasUrl.trim() === "") {
       connectionStatus = "offline";
-      cachedJobs = JSON.parse(JSON.stringify(getDefaultJobs()));
-      cachedCommonSystem = JSON.parse(JSON.stringify(getDefaultCompanySystem()));
-      cachedDepartments = [];
       return {
         source: "local",
         status: connectionStatus,
@@ -89,109 +83,20 @@ const JobApi = (function () {
       };
     }
 
-    // 1. 本地優先快取命中 (SWR 命中，0 秒瞬間呈現)
-    if (!forceRefresh) {
-      const local = loadLocalCache();
-      if (local) {
-        connectionStatus = "connected";
-        cachedJobs = local.jobs;
-        cachedCommonSystem = local.commonSystem;
-        cachedDepartments = local.departments;
+    connectionStatus = "connected";
+    revalidateInBackground(gasUrl, onDataUpdated);
 
-        // 背景非同步進行重新驗證 (Stale-While-Revalidate)
-        revalidateInBackground(gasUrl, onDataUpdated);
-
-        return {
-          source: "local_cache",
-          status: connectionStatus,
-          jobs: cachedJobs,
-          commonSystem: cachedCommonSystem,
-          departments: cachedDepartments,
-          timestamp: local.timestamp,
-          isStale: true
-        };
-      }
-    }
-
-    // 2. 無本地快取或使用者手動要求強制重整：同步遠端請求
-    return await fetchRemoteData(gasUrl, forceRefresh);
+    return {
+      source: "local_instant",
+      status: connectionStatus,
+      jobs: cachedJobs,
+      commonSystem: cachedCommonSystem,
+      departments: cachedDepartments
+    };
   }
 
   /**
-   * 向 Google Apps Script 發送 HTTP GET 請求獲取最新資料
-   */
-  async function fetchRemoteData(gasUrl, isForce) {
-    connectionStatus = "loading";
-    try {
-      const separator = gasUrl.indexOf("?") === -1 ? "?" : "&";
-      let fetchUrl = gasUrl + separator + "action=getAll";
-      if (isForce) {
-        fetchUrl += "&refresh=1&_nocache=" + Date.now();
-      }
-
-      // 注意：不可自訂 Header（例如 Accept、Content-Type），否則會觸發 CORS Preflight OPTIONS 請求
-      const response = await fetch(fetchUrl, {
-        method: "GET"
-      });
-
-      if (!response.ok) {
-        throw new Error("HTTP 狀態碼異常：" + response.status);
-      }
-
-      const resData = await response.json();
-      if (resData && resData.status === "success" && Array.isArray(resData.jobs) && resData.jobs.length > 0) {
-        connectionStatus = "connected";
-        cachedJobs = mergeJobsWithLocal(resData.jobs, getDefaultJobs());
-        cachedCommonSystem = resData.commonSystem || getDefaultCompanySystem();
-        cachedDepartments = resData.departments || [];
-
-        // 寫入本地 SWR 快取持久化
-        saveLocalCache({
-          jobs: cachedJobs,
-          commonSystem: cachedCommonSystem,
-          departments: cachedDepartments
-        });
-
-        return {
-          source: "google_sheets",
-          status: connectionStatus,
-          jobs: cachedJobs,
-          commonSystem: cachedCommonSystem,
-          departments: cachedDepartments,
-          timestamp: resData.timestamp || new Date().toISOString()
-        };
-      } else {
-        throw new Error("遠端回傳資料格式不符合規範");
-      }
-    } catch (err) {
-      console.warn("自 Google Apps Script 獲取資料失敗，切換為本地降級資料庫：", err);
-      // 若已有快取則維持現有快取，否則降級為靜態預設
-      const local = loadLocalCache();
-      if (local) {
-        connectionStatus = "offline";
-        cachedJobs = local.jobs;
-        cachedCommonSystem = local.commonSystem;
-        cachedDepartments = local.departments;
-      } else {
-        connectionStatus = "error";
-        cachedJobs = JSON.parse(JSON.stringify(getDefaultJobs()));
-        cachedCommonSystem = JSON.parse(JSON.stringify(getDefaultCompanySystem()));
-        cachedDepartments = [];
-      }
-
-      return {
-        source: local ? "local_cache" : "local_fallback",
-        status: connectionStatus,
-        error: err.message,
-        jobs: cachedJobs,
-        commonSystem: cachedCommonSystem,
-        departments: cachedDepartments
-      };
-    }
-  }
-
-  /**
-   * 背景靜默重新驗證機制
+   * 背景向 Google 試算表驗證全部資料（超時時間設為 20 秒，容納 Apps Script 試算表遍歷）
    */
   async function revalidateInBackground(gasUrl, onDataUpdated) {
     if (isRevalidating) return;
@@ -199,30 +104,37 @@ const JobApi = (function () {
 
     try {
       const separator = gasUrl.indexOf("?") === -1 ? "?" : "&";
-      const fetchUrl = gasUrl + separator + "action=getAll";
+      const fetchUrl = gasUrl + separator + "action=getAll&refresh=1&_nocache=" + Date.now();
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(function () { controller.abort(); }, 20000);
 
       const response = await fetch(fetchUrl, {
-        method: "GET"
+        method: "GET",
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) return;
 
       const resData = await response.json();
-      if (resData && resData.status === "success" && Array.isArray(resData.jobs)) {
+      if (resData && resData.status === "success" && Array.isArray(resData.jobs) && resData.jobs.length > 0) {
         const freshJobs = mergeJobsWithLocal(resData.jobs, getDefaultJobs());
-        const freshCommon = resData.commonSystem || getDefaultCompanySystem();
+        const freshCommon = (resData.commonSystem && resData.commonSystem.jobGrades && resData.commonSystem.jobGrades.columns && resData.commonSystem.jobGrades.columns.length > 0)
+          ? resData.commonSystem
+          : getDefaultCompanySystem();
         const freshDepts = resData.departments || [];
+
+        // 智慧防抖：比對是否有實質變更
+        const isChanged = JSON.stringify(freshJobs) !== JSON.stringify(cachedJobs);
 
         cachedJobs = freshJobs;
         cachedCommonSystem = freshCommon;
         cachedDepartments = freshDepts;
         connectionStatus = "connected";
 
-        saveLocalCache({
-          jobs: cachedJobs,
-          commonSystem: cachedCommonSystem,
-          departments: cachedDepartments
-        });
+        // 更新持久化快照
+        persistSnapshot(cachedJobs);
 
         const updatePayload = {
           source: "google_sheets",
@@ -230,174 +142,133 @@ const JobApi = (function () {
           jobs: cachedJobs,
           commonSystem: cachedCommonSystem,
           departments: cachedDepartments,
-          timestamp: resData.timestamp || new Date().toISOString()
+          timestamp: resData.timestamp || new Date().toISOString(),
+          isChanged: isChanged
         };
 
         if (typeof onDataUpdated === "function") {
-          onDataUpdated(updatePayload);
+          onDataUpdated(updatePayload, isChanged);
         }
-
-        window.dispatchEvent(new CustomEvent("jobDataUpdated", { detail: updatePayload }));
       }
     } catch (e) {
-      console.warn("背景重新驗證靜默失敗（維持本地快取）：", e);
+      console.warn("背景同步 Google 試算表全表略過或超時：", e);
     } finally {
       isRevalidating = false;
     }
   }
 
   /**
-   * 輔助函式：將 Google Sheets 資料與本地結構合併
+   * 背景針對單一職位快速同步（執行耗時僅約 1~2 秒，支援智慧防抖與快照更新）
+   */
+  async function syncSingleJob(jobId, onJobUpdated) {
+    if (!jobId) return;
+    if (jobId === "wh_operator_a" || jobId === "wh_operator_b") jobId = "wh_operator";
+    const gasUrl = AppConfig.getGasUrl();
+    if (!gasUrl || gasUrl.trim() === "") return;
+
+    try {
+      const separator = gasUrl.indexOf("?") === -1 ? "?" : "&";
+      const fetchUrl = gasUrl + separator + "action=getJob&id=" + encodeURIComponent(jobId) + "&_nocache=" + Date.now();
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(function () { controller.abort(); }, 12000);
+
+      const response = await fetch(fetchUrl, {
+        method: "GET",
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return;
+
+      const resData = await response.json();
+      if (resData && resData.status === "success" && resData.job && (resData.job.id === jobId || (resData.job.id === "wh_operator" && (jobId === "wh_operator_a" || jobId === "wh_operator_b")))) {
+        if (!cachedJobs) {
+          cachedJobs = getInitialJobs();
+        }
+        const index = cachedJobs.findIndex(function (j) { return j.id === jobId; });
+        const localJob = index !== -1 ? cachedJobs[index] : null;
+        const merged = mergeSingleJob(resData.job, localJob);
+
+        // 智慧防抖：比對該職位是否有實質修改
+        const isChanged = !localJob || JSON.stringify(merged) !== JSON.stringify(localJob);
+
+        if (index !== -1) {
+          cachedJobs[index] = merged;
+        } else {
+          cachedJobs.push(merged);
+        }
+
+        connectionStatus = "connected";
+
+        // 若有實質異動，立即更新持久化快照
+        if (isChanged) {
+          persistSnapshot(cachedJobs);
+        }
+
+        if (typeof onJobUpdated === "function") {
+          onJobUpdated(merged, isChanged);
+        }
+        return merged;
+      }
+    } catch (e) {
+      console.warn("快速同步單一職位 (" + jobId + ") 失敗：", e);
+    }
+  }
+
+  /**
+   * 單一職位資料精準合併
+   */
+  function mergeSingleJob(remote, local) {
+    if (!remote) return local;
+    if (!local) return remote;
+    return {
+      id: local.id,
+      category: local.category,
+      dept: remote.dept || local.dept,
+      title: remote.title || local.title,
+      grade: remote.grade || local.grade,
+      reportsTo: remote.reportsTo || local.reportsTo,
+      workLocation: (remote.workLocation !== undefined && remote.workLocation !== null && remote.workLocation !== "") ? remote.workLocation : local.workLocation,
+      shift: (remote.shift !== undefined && remote.shift !== null && remote.shift !== "") ? remote.shift : local.shift,
+      deputy: (remote.deputy !== undefined && remote.deputy !== null && remote.deputy !== "") ? remote.deputy : local.deputy,
+      emergencyRole: (remote.emergencyRole !== undefined && remote.emergencyRole !== null && remote.emergencyRole !== "") ? remote.emergencyRole : local.emergencyRole,
+      overview: (remote.overview !== undefined && remote.overview !== null && remote.overview !== "") ? remote.overview : local.overview,
+      qualifications: (remote.qualifications !== undefined && remote.qualifications !== null && remote.qualifications !== "") ? remote.qualifications : local.qualifications,
+      certificates: (remote.certificates !== undefined && remote.certificates !== null && remote.certificates !== "") ? remote.certificates : local.certificates,
+      schedule: (remote.schedule && remote.schedule.length > 0) ? remote.schedule : local.schedule,
+      notes: (remote.notes && remote.notes.length > 0) ? remote.notes : local.notes,
+      tasks: (remote.tasks && remote.tasks.length > 0) ? remote.tasks : local.tasks
+    };
+  }
+
+  /**
+   * 輔助函式：將 Google 試算表全部職位與本地預設資料合併
    */
   function mergeJobsWithLocal(remoteJobs, localJobs) {
     if (!localJobs || localJobs.length === 0) return remoteJobs || [];
     const jobMap = {};
     (remoteJobs || []).forEach(function (rj) {
-      if (rj && rj.id) jobMap[rj.id] = rj;
+      if (rj && rj.id) {
+        jobMap[rj.id] = rj;
+        if (rj.id === "wh_operator") {
+          jobMap["wh_operator_a"] = rj;
+          jobMap["wh_operator_b"] = rj;
+        }
+      }
     });
 
     return localJobs.map(function (lj) {
       const remote = jobMap[lj.id];
       if (!remote) return lj;
-      return {
-        id: lj.id,
-        category: lj.category,
-        dept: lj.dept || remote.dept,
-        title: remote.title || lj.title,
-        grade: remote.grade || lj.grade,
-        reportsTo: remote.reportsTo || lj.reportsTo,
-        workLocation: remote.workLocation || lj.workLocation,
-        shift: remote.shift || lj.shift,
-        overview: remote.overview || lj.overview,
-        qualifications: remote.qualifications || lj.qualifications,
-        certificates: remote.certificates || lj.certificates,
-        schedule: (remote.schedule && remote.schedule.length > 0) ? remote.schedule : lj.schedule,
-        notes: (remote.notes && remote.notes.length > 0) ? remote.notes : lj.notes,
-        tasks: (remote.tasks && remote.tasks.length > 0) ? remote.tasks : lj.tasks
-      };
+      return mergeSingleJob(remote, lj);
     });
-  }
-
-  /**
-   * 測試指定 Google Apps Script 網址連線能力
-   */
-  async function testConnection(testUrl) {
-    if (!testUrl || testUrl.trim() === "") {
-      return { ok: false, message: "網址不可為空白" };
-    }
-    try {
-      const separator = testUrl.indexOf("?") === -1 ? "?" : "&";
-      const url = testUrl.trim() + separator + "action=getCommon&_nocache=" + Date.now();
-      const resp = await fetch(url, {
-        method: "GET"
-      });
-      if (!resp.ok) {
-        return { ok: false, message: "伺服器回應錯誤碼：" + resp.status };
-      }
-      const data = await resp.json();
-      if (data && data.status === "success") {
-        return { ok: true, message: "連線成功！Google Sheets API 運作正常。" };
-      } else {
-        return { ok: false, message: "回應格式未符合預期：" + (data.message || "未知原因") };
-      }
-    } catch (e) {
-      return { ok: false, message: "連線失敗：" + e.message + "（請確認發布權限是否已設為「所有人」）" };
-    }
-  }
-
-  /**
-   * 強制刷新後端快取快照
-   */
-  async function refreshBackendCache() {
-    const gasUrl = AppConfig.getGasUrl();
-    if (!gasUrl) {
-      return { ok: false, message: "尚未配置 Google Apps Script 網址" };
-    }
-    try {
-      const separator = gasUrl.indexOf("?") === -1 ? "?" : "&";
-      const url = gasUrl + separator + "action=refreshCache&_nocache=" + Date.now();
-      const resp = await fetch(url, { method: "GET" });
-      const data = await resp.json();
-      if (data && data.status === "success") {
-        if (data.jobs) {
-          cachedJobs = mergeJobsWithLocal(data.jobs, getDefaultJobs());
-          cachedCommonSystem = data.commonSystem || getDefaultCompanySystem();
-          cachedDepartments = data.departments || [];
-          saveLocalCache({
-            jobs: cachedJobs,
-            commonSystem: cachedCommonSystem,
-            departments: cachedDepartments
-          });
-        }
-        return { ok: true, message: "後端快取快照已全量重建完成！" };
-      }
-      return { ok: false, message: data.message || "快取重建失敗" };
-    } catch (e) {
-      return { ok: false, message: "呼叫快取刷新失敗：" + e.message };
-    }
-  }
-
-  /**
-   * 將修改後的工作說明書寫回 Google Sheets，並即時更新本地 SWR 快取
-   */
-  async function updateJob(jobData) {
-    const gasUrl = AppConfig.getGasUrl();
-    if (!gasUrl) {
-      if (cachedJobs) {
-        for (let i = 0; i < cachedJobs.length; i++) {
-          if (cachedJobs[i].id === jobData.id) {
-            cachedJobs[i] = JSON.parse(JSON.stringify(jobData));
-            break;
-          }
-        }
-        saveLocalCache({
-          jobs: cachedJobs,
-          commonSystem: cachedCommonSystem,
-          departments: cachedDepartments
-        });
-      }
-      return { ok: true, mode: "local", message: "本機端已更新（未設定 Google Apps Script 網址）" };
-    }
-
-    try {
-      // 避免跨域預檢，使用 text/plain 送出 JSON 字串
-      const resp = await fetch(gasUrl, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "updateJob",
-          job: jobData
-        })
-      });
-      const res = await resp.json();
-      if (res && res.status === "success") {
-        if (cachedJobs) {
-          for (let i = 0; i < cachedJobs.length; i++) {
-            if (cachedJobs[i].id === jobData.id) {
-              cachedJobs[i] = JSON.parse(JSON.stringify(jobData));
-              break;
-            }
-          }
-          // 同步寫入本地快取
-          saveLocalCache({
-            jobs: cachedJobs,
-            commonSystem: cachedCommonSystem,
-            departments: cachedDepartments
-          });
-        }
-        return { ok: true, mode: "remote", message: "已成功同步儲存至 Google Sheets 與本地快取！" };
-      } else {
-        throw new Error(res.message || "更新失敗");
-      }
-    } catch (err) {
-      return { ok: false, message: "儲存至 Google Sheets 時發生錯誤：" + err.message };
-    }
   }
 
   return {
     getStatus: getStatus,
+    getInitialJobs: getInitialJobs,
     loadAllData: loadAllData,
-    testConnection: testConnection,
-    refreshBackendCache: refreshBackendCache,
-    updateJob: updateJob
+    syncSingleJob: syncSingleJob
   };
 })();

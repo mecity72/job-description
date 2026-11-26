@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20261119_v5">
 </head>
 
 <body>
@@ -70,14 +70,20 @@
               <path d="M12 12v5"></path>
             </svg>
           </span>
-          <span class="sidebar-item-label">公司組織圖</span>
+          <span class="sidebar-item-label">公司組織圖 <svg viewBox="0 0 24 24" width="13" height="13" fill="none"
+              stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+              class="sidebar-lock-icon" style="vertical-align: -1px; margin-left: 5px; opacity: 0.75;"
+              aria-label="需密碼驗證">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg></span>
         </a>
       </nav>
 
       <!-- 職位頁面分組標題 -->
       <div class="sidebar-section-meta">
         <span>職位頁面</span>
-        <span id="sidebarJobsCount">共 30 項</span>
+        <span id="sidebarJobsCount">共 33 項</span>
       </div>
 
       <!-- 五大部門導覽選單（由 JavaScript 動態渲染並同步數量） -->
@@ -132,6 +138,8 @@
               </span>
               <input type="text" id="jobSearchInput" class="topbar-search-input" placeholder="搜尋職位名稱、課室、工作項目或表單…"
                 autocomplete="off">
+              <!-- 即時搜尋浮動下拉選單 -->
+              <div id="searchDropdown" class="search-dropdown-menu" style="display: none;" role="listbox"></div>
             </div>
 
             <!-- 深淺色切換鈕 -->
@@ -145,14 +153,14 @@
       <!-- 主內容呈現區 -->
       <main class="app-main">
 
-        <!-- 視圖 1：首頁 (30 個職位依課室導覽與搜尋) -->
+        <!-- 視圖 1：首頁 (33 個職位依課室導覽與搜尋) -->
         <section id="viewHome" class="view-container active">
           <!-- 白底淡綠漸層歡迎說明卡片 -->
           <div class="welcome-card">
             <h2 class="welcome-title">歡迎使用工作說明書系統</h2>
             <p class="welcome-desc">
-              點選左側選單或下方各課室職位卡片，即可一次檢視該職位之核心職責、日常作業時段分配、主要工作項目、使用表單、執行頻率與管制重點。全廠共整合製造部（17 項）、技術部（6 項）、營業部（1 項）、管理部（4
-              項）及人資總務部（2 項）等 30 項組織職位；跨部門共用之職等對照表、升遷規範與績效評等標準集中於「公司通用制度」頁面。
+              點選左側選單或下方各課室職位卡片，即可一次檢視該職位之核心職責、日常作業時段分配、主要工作項目、使用表單、執行頻率與管制重點。全廠共整合製造部（17 項）、技術部（7 項）、營業部（3 項）、管理部（4
+              項）及人資總務部（2 項）等 33 項組織職位；跨部門共用之職等對照表、升遷規範與績效評等標準集中於「公司通用制度」頁面。
             </p>
           </div>
 
@@ -171,19 +179,22 @@
           <div class="section-header">
             <div class="section-title">
               <span id="jobsSectionTitleText">各部門職位工作說明書</span>
-              <span id="jobsCountDisplay" class="section-count">共 30 個職位</span>
+              <span id="jobsCountDisplay" class="section-count">共 33 個職位</span>
             </div>
 
             <div class="filter-tabs">
-              <button type="button" class="tab-btn active" data-filter="all">全部職位 (<span id="cntAll">30</span>)</button>
+              <button type="button" class="tab-btn active" data-filter="all">全部職位 (<span id="cntAll">33</span>)</button>
               <button type="button" class="tab-btn" data-filter="mfg_dept">製造部 (<span id="cntMfg">17</span>)</button>
-              <button type="button" class="tab-btn" data-filter="tech_dept">技術部 (<span id="cntTech">6</span>)</button>
-              <button type="button" class="tab-btn" data-filter="sales_dept">營業部 (<span id="cntSales">1</span>)</button>
+              <button type="button" class="tab-btn" data-filter="tech_dept">技術部 (<span id="cntTech">7</span>)</button>
+              <button type="button" class="tab-btn" data-filter="sales_dept">營業部 (<span id="cntSales">3</span>)</button>
               <button type="button" class="tab-btn" data-filter="mgmt_dept">管理部 (<span id="cntMgmt">4</span>)</button>
               <button type="button" class="tab-btn" data-filter="hr_ga_dept">人資總務部 (<span
                   id="cntHrGa">2</span>)</button>
             </div>
           </div>
+
+          <!-- 各課室快速跳轉導覽列 (動態生成) -->
+          <div id="sectionAnchorNav" class="section-anchor-nav" style="display: none;"></div>
 
           <!-- 依各課室分組排列之職位卡片區 -->
           <div id="jobsGrid" class="jobs-sections-container">
@@ -214,6 +225,15 @@
 
       </main>
 
+      <!-- 全域浮動回到最上方按鈕 (減少滑鼠滾輪滑動) -->
+      <button type="button" id="backToTopBtn" class="back-to-top-btn" title="回到頁面最上方" aria-label="回到最上方">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+        <span>回頂端</span>
+      </button>
+
       <!-- 頁尾宣告 -->
       <footer class="app-footer">
         <div class="footer-inner">
@@ -225,11 +245,11 @@
   </div>
 
   <!-- 引入模組腳本（加入版本控制避免快取） -->
-  <script src="env.js?v=20261103_5"></script>
-  <script src="js/data.js?v=20261103_5"></script>
-  <script src="js/config.js?v=20261103_5"></script>
-  <script src="js/api.js?v=20261103_5"></script>
-  <script src="js/app.js?v=20261103_5"></script>
+  <script src="env.js?v=20261119_v5"></script>
+  <script src="js/data.js?v=20261119_v5"></script>
+  <script src="js/config.js?v=20261119_v5"></script>
+  <script src="js/api.js?v=20261119_v5"></script>
+  <script src="js/app.js?v=20261119_v5"></script>
 </body>
 
 </html>

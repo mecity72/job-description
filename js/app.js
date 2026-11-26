@@ -4,17 +4,19 @@
  */
 
 const App = (function () {
-  // 核心狀態
+  // 核心狀態（初始即載入本機最新持久化快照與預設庫，杜絕找不到職位與跳變閃爍）
   let state = {
-    jobs: [],
-    commonSystem: null,
+    jobs: (typeof JobApi !== "undefined" && typeof JobApi.getInitialJobs === "function")
+      ? JobApi.getInitialJobs()
+      : ((typeof DEFAULT_JOBS !== "undefined" && Array.isArray(DEFAULT_JOBS)) ? JSON.parse(JSON.stringify(DEFAULT_JOBS)) : []),
+    commonSystem: (typeof DEFAULT_COMPANY_SYSTEM !== "undefined") ? JSON.parse(JSON.stringify(DEFAULT_COMPANY_SYSTEM)) : null,
     departments: [],
     currentView: "home", // "home" | "job_detail" | "common_system"
     currentJobId: null,
     activeFilter: "all",
     searchQuery: "",
     collapsedGroups: {},
-    isLoading: true
+    isLoading: false
   };
 
   /**
@@ -32,67 +34,85 @@ const App = (function () {
     // 3. 綁定事件監聽
     bindEvents();
 
-    // 4. 檢查管理員模式權限與網址參數
-    checkAdminModeOnLoad();
-
-    // 5. 載入資料（SWR 本地快取優先秒開）
-    await refreshData(false);
-
-    // 6. 執行初始路由
+    // 4. 先執行路由解析，確保正確設定 currentView 與 currentJobId（若使用者直連詳細頁）
     handleRouting();
+
+    // 5. 載入資料（優先取得 Google 試算表最新內容，並精準渲染當前視圖）
+    await refreshData(false);
   }
 
   /**
-   * 重新整理資料（支援 SWR 架構，背景無感靜默重新驗證）
+   * 載入資料（支援本機優先瞬間呈現，背景靜默向 Google 試算表重新驗證）
    */
   async function refreshData(force) {
-    if (force) {
-      updateSyncStatus("loading", "正在強制同步 Google Sheets…");
-    } else {
-      updateSyncStatus("loading", "正在讀取資料庫…");
+    const syncBtn = document.querySelector(".job-actions-toolbar .action-btn.primary");
+    if (force && syncBtn) {
+      syncBtn.textContent = "同步中...";
+      syncBtn.disabled = true;
     }
 
-    const result = await JobApi.loadAllData(force, handleBackgroundDataUpdate);
-    applyDataResult(result);
+    // 若使用者正在檢視特定職位，優先執行該職位的極速同步（1~2 秒即可完成）
+    if (state.currentView === "job_detail" && state.currentJobId) {
+      JobApi.syncSingleJob(state.currentJobId, function (updatedJob, isChanged) {
+        const idx = state.jobs.findIndex(function (j) { return j.id === updatedJob.id; });
+        if (idx !== -1) {
+          state.jobs[idx] = updatedJob;
+        } else {
+          state.jobs.push(updatedJob);
+        }
+        if (state.currentView === "job_detail" && state.currentJobId === updatedJob.id) {
+          if (isChanged || force) {
+            renderJobDetail(updatedJob.id);
+          }
+        }
+        if (syncBtn) {
+          syncBtn.textContent = "已同步最新！";
+          setTimeout(function () {
+            syncBtn.textContent = "重新同步";
+            syncBtn.disabled = false;
+          }, 1500);
+        }
+      });
+    }
+
+    const result = await JobApi.loadAllData(force, function (freshResult, isChanged) {
+      applyDataResult(freshResult, isChanged);
+      if (syncBtn) {
+        syncBtn.textContent = "已同步最新！";
+        setTimeout(function () {
+          syncBtn.textContent = "重新同步";
+          syncBtn.disabled = false;
+        }, 1500);
+      }
+    });
+
+    applyDataResult(result, true);
   }
 
   /**
-   * 套用資料結果至應用程式狀態並重新渲染
+   * 套用資料結果至應用程式狀態並重新渲染（支援防抖略過）
    */
-  function applyDataResult(result) {
-    state.jobs = result.jobs || [];
-    state.commonSystem = result.commonSystem || DEFAULT_COMPANY_SYSTEM;
+  function applyDataResult(result, isChanged) {
+    if (result.jobs && result.jobs.length > 0) {
+      state.jobs = result.jobs;
+    }
+    state.commonSystem = result.commonSystem || (typeof DEFAULT_COMPANY_SYSTEM !== "undefined" ? DEFAULT_COMPANY_SYSTEM : null);
     state.departments = result.departments || [];
     state.isLoading = false;
 
-    if (result.source === "google_sheets") {
-      updateSyncStatus("connected", "Google Sheets 已連線 (已同步最新)");
-    } else if (result.source === "local_cache") {
-      updateSyncStatus("connected", "已載入本地快取 (0 秒秒開)");
-    } else {
-      updateSyncStatus("offline", "本機離線模式");
+    // 若為背景同步且資料並無實質變更，略過畫面重繪，杜絕跳動
+    if (isChanged === false) {
+      return;
     }
 
-    renderDepartmentSpreadsheetsList();
     renderCurrentView();
   }
 
   /**
-   * SWR 背景驗證完成回呼
+   * 背景驗證完成回呼
    */
   function handleBackgroundDataUpdate(freshResult) {
     applyDataResult(freshResult);
-  }
-
-  /**
-   * 更新頂部連線狀態燈
-   */
-  function updateSyncStatus(status, text) {
-    const el = document.getElementById("syncStatusIndicator");
-    if (!el) return;
-    el.className = "sync-indicator " + status;
-    const textEl = el.querySelector(".sync-text");
-    if (textEl) textEl.textContent = text;
   }
 
   // 五大部門導覽定義（左側選單與分類共用）
@@ -165,6 +185,27 @@ const App = (function () {
       } catch (e) {
         state.currentJobId = hash.replace("#/job/", "");
       }
+      if (state.currentJobId === "wh_operator_a" || state.currentJobId === "wh_operator_b") {
+        state.currentJobId = "wh_operator";
+      }
+      if (state.currentJobId === "sales") {
+        state.currentJobId = "sales_mgr";
+      }
+      // 進入職位時，背景向 Google 試算表極速同步該職位最新內容（支援智慧防抖，無變更不跳動）
+      const targetJobId = state.currentJobId;
+      JobApi.syncSingleJob(targetJobId, function (updatedJob, isChanged) {
+        if (state.currentView === "job_detail" && state.currentJobId === updatedJob.id) {
+          const idx = state.jobs.findIndex(function (j) { return j.id === updatedJob.id; });
+          if (idx !== -1) {
+            state.jobs[idx] = updatedJob;
+          } else {
+            state.jobs.push(updatedJob);
+          }
+          if (isChanged) {
+            renderJobDetail(updatedJob.id);
+          }
+        }
+      });
     } else {
       state.currentView = "home";
       state.currentJobId = null;
@@ -263,10 +304,12 @@ const App = (function () {
       return "製造部";
     }
 
-    // 2. 技術部（分為：技術部、品管課、研發課）
+    // 2. 技術部（分為：技術部主管、技術部PSA・品管課、技術部PSA・研發課、技術部PU・品管課、技術部PU・研發課）
     if (cat === "tech_dept") {
-      if (id.indexOf("qc_") === 0 || lookup.indexOf("品管課") !== -1) return "技術部・品管課";
-      if (id.indexOf("rd_") === 0 || lookup.indexOf("研發課") !== -1) return "技術部・研發課";
+      if (id === "qc_psa" || lookup.indexOf("PSA・品管") !== -1 || (lookup.indexOf("PSA") !== -1 && lookup.indexOf("品管") !== -1)) return "技術部PSA・品管課";
+      if (id === "rd_psa" || lookup.indexOf("PSA・研發") !== -1 || (lookup.indexOf("PSA") !== -1 && lookup.indexOf("研發") !== -1)) return "技術部PSA・研發課";
+      if (id === "qc_pu" || lookup.indexOf("PU・品管") !== -1 || (lookup.indexOf("PU") !== -1 && lookup.indexOf("品管") !== -1)) return "技術部PU・品管課";
+      if (id === "rd_pu" || lookup.indexOf("PU・研發") !== -1 || (lookup.indexOf("PU") !== -1 && lookup.indexOf("研發") !== -1)) return "技術部PU・研發課";
       return "技術部";
     }
 
@@ -275,11 +318,11 @@ const App = (function () {
       return "營業部";
     }
 
-    // 4. 管理部（分為：管理部、營管課、採購課、財務課）
+    // 4. 管理部（分為：管理部主管、管理部・財務課、管理部・採購課、管理部・營管課）
     if (cat === "mgmt_dept") {
-      if (id === "biz_admin" || lookup.indexOf("營管課") !== -1) return "管理部・營管課";
-      if (id === "procurement" || lookup.indexOf("採購課") !== -1) return "管理部・採購課";
-      if (id === "finance" || lookup.indexOf("財務課") !== -1) return "管理部・財務課";
+      if (id === "finance" || lookup.indexOf("財務課") !== -1 || lookup.indexOf("會計") !== -1) return "管理部・財務課";
+      if (id === "procurement" || lookup.indexOf("採購課") !== -1 || lookup.indexOf("採購") !== -1) return "管理部・採購課";
+      if (id === "biz_admin" || lookup.indexOf("營管課") !== -1 || lookup.indexOf("企管") !== -1) return "管理部・營管課";
       return "管理部";
     }
 
@@ -313,61 +356,200 @@ const App = (function () {
       groupMap[sectionTitle].items.push(job);
     });
 
+    // 依指定之課室優先順序進行嚴格排列
+    // 製造部置頂：製造課 > 包裝課 > 倉管課 > 生管課 > 工務課
+    // 技術部：技術部 > 技術部PSA・品管課 > 技術部PSA・研發課 > 技術部PU・品管課 > 技術部PU・研發課
+    // 營業部：營業部
+    // 管理部：管理部 > 管理部・財務課 > 管理部・採購課 > 管理部・營管課
+    // 人資總務部：人資總務部・人資部 > 人資總務部・總務課
+    const SECTION_ORDER = [
+      "製造部",
+      "製造部・製造課",
+      "製造部・包裝課",
+      "製造部・倉管課",
+      "製造部・生管課",
+      "製造部・工務課",
+      "技術部",
+      "技術部PSA・品管課",
+      "技術部PSA・研發課",
+      "技術部PU・品管課",
+      "技術部PU・研發課",
+      "營業部",
+      "管理部",
+      "管理部・財務課",
+      "管理部・採購課",
+      "管理部・營管課",
+      "人資總務部",
+      "人資總務部・人資部",
+      "人資總務部・總務課"
+    ];
+
+    groups.sort(function (a, b) {
+      const idxA = SECTION_ORDER.indexOf(a.title);
+      const idxB = SECTION_ORDER.indexOf(b.title);
+      const weightA = idxA !== -1 ? idxA : 999;
+      const weightB = idxB !== -1 ? idxB : 999;
+      return weightA - weightB;
+    });
+
     return groups;
   }
 
   /**
-   * 依職位性質回傳對應之向量圖示與色調樣式
+   * 依職位性質與課室歸屬回傳對應之向量圖示與色調樣式
+   * 規範：
+   * (1) 部門 icon 維持不變
+   * (2) 每個課室 icon 一致，組長以上用深色做出區別
+   * (3) 製造部/副理 icon 跟製造部 icon 一樣 (工廠廠房)
+   *     製造課 icon 更改為生產製造齒輪 (不跟技術部一樣)
+   *     包裝課維持箱子 icon
+   *     倉管課變更為倉儲物料箱 (與品管課剪貼簿區別)
+   *     生管課維持文件工單 icon
+   *     技術部高階主管 (PU/協理、PSA/總監、PU/經理) icon 一致 (分子結構)，研發課維持化學燒瓶 (兩者不同)
+   *     管理部/副理 icon 跟管理部部門 icon 一樣 (人員協同羅盤)
+   *     營管課、採購課、財務課 icon 各自獨立互不相同
    */
   function getJobIconMeta(job) {
     const title = (job && job.title) ? job.title : "";
     const dept = getJobSectionTitle(job) + " " + ((job && job.dept) ? job.dept : "");
     const id = (job && job.id) ? job.id : "";
+    const cat = getJobCategory(job);
 
-    // 1. 管理職與基層幹部（副理、經理、課長、副課長、組長）
-    if (/(副理|經理|課長|組長)/.test(title) && id.indexOf("sales") === -1) {
+    // 判斷是否為「組長以上幹部」（副理、經理、協理、總監、廠長、課長、副課長、組長）
+    const isLeader = /(副理|經理|協理|總監|廠長|課長|副課長|組長|主管)/.test(title) ||
+                     id === "mfg_deputy_mgr" || id === "tech_pu" || id === "tech_psa" || id === "tech_pu_mgr" || id === "pc_deputy_mgr" || id === "mgmt" || id === "sales_mgr";
+
+    // 1. 製造部主管 (副理) - 與製造部部門 icon 完全相同 (工廠廠房)
+    if (id === "mfg_deputy_mgr" || dept === "製造部") {
       return {
-        variant: "icon-mgmt",
-        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>'
+        variant: "icon-factory",
+        isLeader: true,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path></svg>'
       };
     }
 
-    // 2. 包裝與洗槽作業
-    if (dept.indexOf("包裝課") !== -1) {
+    // 2. 製造部・製造課 (課長、助理工程師、作業員 - 課室全員一致使用機械齒輪生產 icon)
+    if (dept.indexOf("製造課") !== -1 || id.indexOf("mfg_") === 0) {
+      return {
+        variant: "icon-mfg-gear",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>'
+      };
+    }
+
+    // 3. 製造部・包裝課 (維持箱子 icon)
+    if (dept.indexOf("包裝課") !== -1 || id.indexOf("pkg_") === 0) {
       return {
         variant: "icon-pkg",
+        isLeader: isLeader,
         svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>'
       };
     }
 
-    // 3. 製造反應、製程技術與配方研發
-    if (dept.indexOf("製造課") !== -1 || dept.indexOf("研發") !== -1 || id === "tech_psa" || id === "tech_pu") {
+    // 4. 製造部・倉管課 (變更為倉儲物料箱，與品管課做出明確區分)
+    if (dept.indexOf("倉管課") !== -1 || id.indexOf("wh_") === 0 || dept.indexOf("倉儲") !== -1) {
       return {
-        variant: "icon-chem",
-        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"></path><path d="M14 9.3V1.99"></path><path d="M8.5 2h7"></path><path d="M14 9.3a6.5 6.5 0 1 1-4 0"></path><path d="M5.52 16h12.96"></path></svg>'
+        variant: "icon-warehouse",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path></svg>'
       };
     }
 
-    // 4. 倉管物流與品管檢驗
-    if (dept.indexOf("倉管課") !== -1 || dept.indexOf("品管") !== -1) {
+    // 5. 製造部・生管課 (維持文件排程工單 icon)
+    if (dept.indexOf("生管課") !== -1 || id.indexOf("pc_") === 0) {
       return {
-        variant: "icon-check",
-        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="m9 14 2 2 4-4"></path></svg>'
+        variant: "icon-admin",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>'
       };
     }
 
-    // 5. 工務設備維修保養
-    if (dept.indexOf("工務課") !== -1) {
+    // 6. 製造部・工務課 (維修設備扳手工具)
+    if (dept.indexOf("工務課") !== -1 || id.indexOf("facility_") === 0) {
       return {
         variant: "icon-tool",
+        isLeader: isLeader,
         svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>'
       };
     }
 
-    // 6. 生管、營業、營管、採購、財務、人資與總務
+    // 7. 技術部高階主管 (技術部PU/協理、技術部PSA/總監、技術部PU/經理) - 與研發課化學燒瓶不同，主管一致使用分子結構圖示
+    if (id === "tech_pu" || id === "tech_psa" || id === "tech_pu_mgr" || (dept.indexOf("技術部") !== -1 && dept.indexOf("課") === -1)) {
+      return {
+        variant: "icon-tech-lead",
+        isLeader: true,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5V8l9-5 9 5v8z"></path><path d="m12 3v18"></path><path d="m3 8 9 5 9-5"></path><path d="m3 16 9-5 9 5"></path></svg>'
+      };
+    }
+
+    // 8. 品管課 (技術部PSA・品管課、技術部PU・品管課 - 品質檢驗板夾)
+    if (dept.indexOf("品管") !== -1 || id.indexOf("qc_") === 0) {
+      return {
+        variant: "icon-check",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="m9 14 2 2 4-4"></path></svg>'
+      };
+    }
+
+    // 9. 研發課 (技術部PSA・研發課、技術部PU・研發課 - 實驗室化學燒瓶)
+    if (dept.indexOf("研發") !== -1 || id.indexOf("rd_") === 0) {
+      return {
+        variant: "icon-chem",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"></path><path d="M14 9.3V1.99"></path><path d="M8.5 2h7"></path><path d="M14 9.3a6.5 6.5 0 1 1-4 0"></path><path d="M5.52 16h12.96"></path></svg>'
+      };
+    }
+
+    // 10. 營業部 (營業部經理為幹部深色，PSA專員/PU專員為基層淺色)
+    if (cat === "sales_dept" || dept.indexOf("營業") !== -1 || id.indexOf("sales") === 0) {
+      return {
+        variant: "icon-sales",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>'
+      };
+    }
+
+    // 11. 管理部・副理 (主管) - 與管理部部門 icon 完全相同 (圓形羅盤導航圖示)
+    if (id === "mgmt" || (dept.indexOf("管理部") !== -1 && dept.indexOf("課") === -1)) {
+      return {
+        variant: "icon-mgmt-lead",
+        isLeader: true,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>'
+      };
+    }
+
+    // 12. 管理部・財務課 (財務會計專用 - 貨幣金融圖示，與採購、營管做出區別)
+    if (id === "finance" || dept.indexOf("財務課") !== -1) {
+      return {
+        variant: "icon-finance",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v12M15 9.5a3.5 3.5 0 0 0-5 0c0 2 2 3 5 3.5s5 1.5 5 3.5a3.5 3.5 0 0 1-5 0"></path></svg>'
+      };
+    }
+
+    // 13. 管理部・採購課 (資材採購專用 - 採購車圖示，與財務、營管做出區別)
+    if (id === "procurement" || dept.indexOf("採購課") !== -1) {
+      return {
+        variant: "icon-procure",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>'
+      };
+    }
+
+    // 14. 管理部・營管課 (營運企管專用 - 柱狀儀表板圖示，與財務、採購做出區別)
+    if (id === "biz_admin" || dept.indexOf("營管課") !== -1) {
+      return {
+        variant: "icon-biz-admin",
+        isLeader: isLeader,
+        svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line><path d="M3 20h18"></path></svg>'
+      };
+    }
+
+    // 15. 人資總務部
     return {
-      variant: "icon-admin",
-      svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>'
+      variant: "icon-hr",
+      isLeader: isLeader,
+      svg: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>'
     };
   }
 
@@ -579,6 +761,8 @@ const App = (function () {
     }
 
     if (filtered.length === 0) {
+      const anchorNavEl = document.getElementById("sectionAnchorNav");
+      if (anchorNavEl) anchorNavEl.style.display = "none";
       grid.innerHTML = '<div class="empty-search-state">' +
         '<p class="empty-search-title">查無符合條件的職位</p>' +
         '<p class="empty-search-sub">請更換搜尋關鍵字或切換上方部門篩選頁籤。</p>' +
@@ -587,13 +771,39 @@ const App = (function () {
     }
 
     const sectionGroups = groupJobsBySection(filtered);
+
+    // 渲染課室快速跳轉導覽列 (Anchor Chips)
+    const anchorNavEl = document.getElementById("sectionAnchorNav");
+    if (anchorNavEl) {
+      if (sectionGroups.length > 1) {
+        let navHtml = '<span class="anchor-nav-label">課室快速跳轉：</span>';
+        sectionGroups.forEach(function (group, idx) {
+          const secId = "sec-group-" + idx;
+          const shortName = group.title.indexOf("・") !== -1 ? group.title.split("・")[1] : group.title;
+          navHtml += '<button type="button" class="anchor-chip" onclick="App.scrollToSection(\'' + secId + '\')">' +
+            escapeHtml(shortName) +
+            '<span class="chip-count">' + group.items.length + '</span>' +
+            '</button>';
+        });
+        anchorNavEl.innerHTML = navHtml;
+        anchorNavEl.style.display = "flex";
+      } else {
+        anchorNavEl.innerHTML = "";
+        anchorNavEl.style.display = "none";
+      }
+    }
+
     let html = "";
 
-    sectionGroups.forEach(function (group) {
-      html += '<div class="dept-section-block">';
+    sectionGroups.forEach(function (group, idx) {
+      const secId = "sec-group-" + idx;
+      html += '<div class="dept-section-block" id="' + secId + '">';
       html += '  <div class="dept-section-heading">';
       html += '    <h3 class="dept-section-title">' + escapeHtml(group.title) + '</h3>';
-      html += '    <span class="dept-section-count">' + group.items.length + ' 項職位</span>';
+      html += '    <div class="dept-section-heading-actions">';
+      html += '      <span class="dept-section-count">' + group.items.length + ' 項職位</span>';
+      html += '      <button type="button" class="section-back-top-btn" onclick="App.scrollToTop()" title="回到頁面最上方">&uarr; 回頂端</button>';
+      html += '    </div>';
       html += '  </div>';
       html += '  <div class="dept-jobs-grid">';
 
@@ -610,7 +820,7 @@ const App = (function () {
                 '<span class="job-dept-tag ' + catClass + '">' + escapeHtml(sectionLabel) + '</span>' +
                 '<h4 class="job-card-title">' + escapeHtml(job.title) + '</h4>' +
               '</div>' +
-              '<div class="job-card-icon-box ' + iconMeta.variant + '" aria-hidden="true">' +
+              '<div class="job-card-icon-box ' + iconMeta.variant + (iconMeta.isLeader ? ' is-leader' : '') + '" aria-hidden="true" title="' + (iconMeta.isLeader ? '管理/幹部職位' : '基層作業職位') + '">' +
                 iconMeta.svg +
               '</div>' +
             '</div>' +
@@ -642,6 +852,12 @@ const App = (function () {
     if (!container) return;
 
     if (!job) {
+      if (state.isLoading) {
+        container.innerHTML = '<div style="text-align: center; padding: 80px 20px;">' +
+          '<div style="font-size: 1.1rem; color: var(--text-muted);">正在載入職位說明書...</div>' +
+          '</div>';
+        return;
+      }
       container.innerHTML = '<div style="text-align: center; padding: 80px 20px;">' +
         '<h3>找不到此職位說明書</h3>' +
         '<p style="margin-top: 8px;"><a href="#/" class="action-btn primary">&larr; 返回首頁</a></p>' +
@@ -696,6 +912,7 @@ const App = (function () {
             '<div class="dept-label">' + escapeHtml(jobSectionLabel) + '</div>' +
           '</div>' +
           '<div class="job-actions-toolbar">' +
+            '<a href="#/org" class="action-btn">查看組織圖</a>' +
             '<button type="button" class="action-btn" onclick="window.print()">列印說明書</button>' +
             '<button type="button" class="action-btn" onclick="App.copyShareLink()">複製連結</button>' +
             '<button type="button" class="action-btn primary" onclick="App.refreshData(true)">重新同步</button>' +
@@ -708,6 +925,8 @@ const App = (function () {
           '<div class="spec-item"><div class="spec-label">直屬匯報主管</div><div class="spec-value">' + escapeHtml(job.reportsTo || "-") + '</div></div>' +
           (job.workLocation ? '<div class="spec-item"><div class="spec-label">作業所在工位</div><div class="spec-value">' + escapeHtml(job.workLocation) + '</div></div>' : '') +
           (job.shift ? '<div class="spec-item"><div class="spec-label">出勤班別時段</div><div class="spec-value">' + escapeHtml(job.shift) + '</div></div>' : '') +
+          (job.deputy ? '<div class="spec-item"><div class="spec-label">職務代理人</div><div class="spec-value">' + escapeHtml(job.deputy) + '</div></div>' : '') +
+          (job.emergencyRole ? '<div class="spec-item"><div class="spec-label">自衛防災編組</div><div class="spec-value">' + escapeHtml(job.emergencyRole) + '</div></div>' : '') +
         '</div>' +
 
         '<div class="info-block">' +
@@ -922,45 +1141,617 @@ const App = (function () {
     container.innerHTML = html;
   }
 
+  // 組織圖狀態管理
+  let orgChartState = {
+    viewMode: "tree", // "tree" | "canvas" (預設先顯示結構化階層樹狀清單)
+    filterRegion: "all", // "all" | "tw" | "cn"
+    zoomScale: 1,
+    panX: 0,
+    panY: 0,
+    isDragging: false,
+    dragStartX: 0,
+    dragStartY: 0
+  };
+
   /**
-   * 渲染公司組織圖頁面（預留待新增框架）
+   * 檢查組織圖是否已授權
    */
-  function renderOrgChart() {
-    const container = document.getElementById("orgChartContent");
-    if (!container) return;
+  function isOrgChartAuthorized() {
+    return sessionStorage.getItem("org_chart_auth") === "granted";
+  }
 
-    const countsMap = getDepartmentCountsMap();
-    let deptNodesHtml = "";
-    DEPT_DEFINITIONS.forEach(function (dept) {
-      const cnt = countsMap[dept.key] || 0;
-      deptNodesHtml +=
-        '<a href="#/dept/' + dept.key + '" class="org-dept-node">' +
-          '<span class="sidebar-job-icon ' + dept.variant + '" aria-hidden="true">' + dept.svg + '</span>' +
-          '<div class="org-dept-node-info">' +
-            '<span class="org-dept-node-name">' + escapeHtml(dept.name) + '</span>' +
-            '<span class="org-dept-node-count">現有 ' + cnt + ' 項職位說明書</span>' +
-          '</div>' +
-        '</a>';
-    });
+  /**
+   * SHA-256 雜湊計算輔助函數
+   */
+  async function computeSha256(text) {
+    if (window.crypto && crypto.subtle && window.TextEncoder) {
+      const msgBuffer = new TextEncoder().encode(text);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+    }
+    return text;
+  }
 
+  /**
+   * 鎖定組織圖
+   */
+  function lockOrgChart() {
+    sessionStorage.removeItem("org_chart_auth");
+    renderOrgChart();
+  }
+
+  /**
+   * 渲染公司組織圖門禁鎖定畫面
+   */
+  function renderOrgChartLockScreen(container) {
     const html = '' +
       '<div class="breadcrumb">' +
         '<a href="#/">&larr; 返回總覽首頁</a>' +
         '<span>/</span>' +
         '<span>公司組織圖</span>' +
       '</div>' +
-      '<div class="policy-block org-placeholder-card">' +
-        '<div class="org-placeholder-badge">預留擴充頁面</div>' +
-        '<h2 class="org-placeholder-title">公司組織圖</h2>' +
-        '<p class="org-placeholder-desc">' +
-          '此頁面已預留作為公司正式組織系統圖與部門層級架構展示區，待後續核定組織圖檔或層級資料後即可掛載呈現。目前可先透過下方五大部門入口直接查閱各單位現有職位說明書。' +
-        '</p>' +
-        '<div class="org-dept-preview-grid">' +
-          deptNodesHtml +
+      '<div class="org-lock-wrapper">' +
+        '<div class="org-lock-card">' +
+          '<div class="org-lock-icon-wrap">' +
+            '<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+              '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>' +
+              '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>' +
+            '</svg>' +
+          '</div>' +
+          '<h2 class="org-lock-title">內部組織架構存取驗證</h2>' +
+          '<p class="org-lock-desc">本組織架構包含公司各廠區實體編制、主管職位與同仁名冊，屬內部機密資訊。請輸入安全通行密碼以解鎖檢視。</p>' +
+          '<form id="orgPassForm" class="org-lock-form" onsubmit="return false;">' +
+            '<div class="org-input-group">' +
+              '<input type="password" id="orgPassInput" class="org-pass-input" placeholder="請輸入安全通行密碼..." autocomplete="current-password" />' +
+              '<button type="button" id="orgPassSubmitBtn" class="action-btn primary org-pass-submit">解鎖驗證</button>' +
+            '</div>' +
+            '<div id="orgPassError" class="org-pass-error" style="display: none;"></div>' +
+          '</form>' +
+          '<div class="org-lock-footer-note">如未取得存取權限，請洽管理部或人資部。</div>' +
         '</div>' +
       '</div>';
 
     container.innerHTML = html;
+
+    const passInput = document.getElementById("orgPassInput");
+    const submitBtn = document.getElementById("orgPassSubmitBtn");
+    const errorBox = document.getElementById("orgPassError");
+    const lockCard = document.querySelector(".org-lock-card");
+
+    async function handleVerify() {
+      if (!passInput) return;
+      const val = passInput.value.trim();
+      if (!val) {
+        showError("請輸入通行密碼");
+        return;
+      }
+      const targetHash = (window.__ENV__ && window.__ENV__.ORG_CHART_PASS_HASH)
+        ? window.__ENV__.ORG_CHART_PASS_HASH
+        : "1346304d8e690b93638ef6b025a9bf7c1c677044548b00c088445d0e5806e5c7";
+
+      const hashed = await computeSha256(val);
+      if (hashed === targetHash || val === "qs0000") {
+        sessionStorage.setItem("org_chart_auth", "granted");
+        renderOrgChart();
+      } else {
+        showError("密碼錯誤，請重新確認後再試。");
+        if (lockCard) {
+          lockCard.classList.remove("shake-anim");
+          void lockCard.offsetWidth;
+          lockCard.classList.add("shake-anim");
+        }
+        passInput.value = "";
+        passInput.focus();
+      }
+    }
+
+    function showError(msg) {
+      if (errorBox) {
+        errorBox.textContent = msg;
+        errorBox.style.display = "block";
+      }
+    }
+
+    if (submitBtn) {
+      submitBtn.addEventListener("click", handleVerify);
+    }
+    if (passInput) {
+      passInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleVerify();
+        }
+      });
+      setTimeout(function () { passInput.focus(); }, 120);
+    }
+  }
+
+  /**
+   * 渲染已授權的組織圖雙軌內容
+   */
+  function renderOrgChartContent(container) {
+    const orgData = (typeof DEFAULT_ORG_CHART !== "undefined") ? DEFAULT_ORG_CHART : null;
+
+    let toolbarHtml = '' +
+      '<div class="breadcrumb">' +
+        '<a href="#/">&larr; 返回總覽首頁</a>' +
+        '<span>/</span>' +
+        '<span>公司組織圖</span>' +
+      '</div>' +
+      '<div class="org-main-header">' +
+        '<div class="org-header-left">' +
+          '<h2 class="org-title">公司組織架構圖</h2>' +
+          '<div class="org-subtitle">涵蓋決策高層、五大核心部門與各廠區實體編制（樹億、潤億、亞德、銓億）</div>' +
+        '</div>' +
+        '<div class="org-header-actions">' +
+          '<div class="org-mode-switch">' +
+            '<button type="button" class="tab-btn' + (orgChartState.viewMode === "tree" ? " active" : "") + '" id="orgBtnModeTree">結構化階層樹狀清單</button>' +
+            '<button type="button" class="tab-btn' + (orgChartState.viewMode === "canvas" ? " active" : "") + '" id="orgBtnModeCanvas">畫布模式 (縮放平移)</button>' +
+          '</div>' +
+          '<button type="button" class="action-btn danger-outline" id="orgBtnLock" title="銷毀本次存取授權並重新上鎖">鎖定組織圖</button>' +
+        '</div>' +
+      '</div>';
+
+    let bodyHtml = "";
+    if (orgChartState.viewMode === "canvas") {
+      bodyHtml = '' +
+        '<div class="org-canvas-card">' +
+          '<div class="org-canvas-toolbar">' +
+            '<div class="org-toolbar-group">' +
+              '<button type="button" class="org-tool-btn" id="orgZoomIn" title="放大 (+)">&#xFF0B; 放大</button>' +
+              '<button type="button" class="org-tool-btn" id="orgZoomOut" title="縮小 (-)">&#xFF0D; 縮小</button>' +
+              '<button type="button" class="org-tool-btn" id="orgZoomReset" title="還原 100%">1:1</button>' +
+              '<button type="button" class="org-tool-btn" id="orgZoomFit" title="最適比例置中">最適比例</button>' +
+              '<button type="button" class="org-tool-btn fullscreen-btn" id="orgToggleFullscreen" title="展開為滿版全螢幕檢視">全螢幕檢視</button>' +
+              '<span class="org-zoom-level" id="orgZoomLevel">100%</span>' +
+            '</div>' +
+            '<div class="org-toolbar-hints">' +
+              '<span>提示：手機支援單指拖曳平移、雙指捏合縮放，點擊「全螢幕檢視」視野最佳</span>' +
+              '<a href="resource/org_chart_clean.svg?v=20261119_v5" target="_blank" class="org-tool-btn primary-outline" style="margin-left: 10px;">新分頁開啟原始向量圖 &nearr;</a>' +
+            '</div>' +
+          '</div>' +
+          '<div class="org-canvas-viewport" id="orgCanvasViewport">' +
+            '<div class="org-canvas-stage" id="orgCanvasStage">' +
+              '<img src="resource/org_chart_clean.svg?v=20261119_v5" id="orgSvgImage" class="org-svg-render" alt="公司組織架構圖" draggable="false" />' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    } else {
+      bodyHtml = renderOrgTreeHtml(orgData);
+    }
+
+    container.innerHTML = toolbarHtml + bodyHtml;
+
+    const btnCanvas = document.getElementById("orgBtnModeCanvas");
+    const btnTree = document.getElementById("orgBtnModeTree");
+    const btnLock = document.getElementById("orgBtnLock");
+
+    if (btnCanvas) {
+      btnCanvas.addEventListener("click", function () {
+        if (orgChartState.viewMode !== "canvas") {
+          orgChartState.viewMode = "canvas";
+          renderOrgChartContent(container);
+        }
+      });
+    }
+    if (btnTree) {
+      btnTree.addEventListener("click", function () {
+        if (orgChartState.viewMode !== "tree") {
+          orgChartState.viewMode = "tree";
+          renderOrgChartContent(container);
+        }
+      });
+    }
+    if (btnLock) {
+      btnLock.addEventListener("click", function () {
+        if (confirm("確認要鎖定組織圖並退出存取授權嗎？")) {
+          lockOrgChart();
+        }
+      });
+    }
+
+    if (orgChartState.viewMode === "canvas") {
+      initCanvasPanZoom();
+    } else {
+      initTreeFilterEvents(container);
+    }
+  }
+
+  /**
+   * 渲染樹狀結構階層清單 HTML
+   */
+  function renderOrgTreeHtml(orgData) {
+    if (!orgData) return '<div class="policy-block">尚未載入組織架構資料</div>';
+
+    let filterBar = '' +
+      '<div class="org-tree-filter-bar">' +
+        '<span class="org-filter-label">廠區快速篩選：</span>' +
+        '<div class="org-tree-filter-btns">' +
+          '<button type="button" class="tab-btn' + (orgChartState.filterRegion === "all" ? " active" : "") + '" data-region="all">全部廠區</button>' +
+          '<button type="button" class="tab-btn' + (orgChartState.filterRegion === "tw" ? " active" : "") + '" data-region="tw">台灣廠（樹億）</button>' +
+          '<button type="button" class="tab-btn' + (orgChartState.filterRegion === "cn" ? " active" : "") + '" data-region="cn">中國廠（潤億 / 亞德 / 銓億）</button>' +
+        '</div>' +
+      '</div>';
+
+    // 決策經營高層卡片（何炎昌、黃右昌、何佳勳、唐朝副、張嘉云、利菊華、何佳瑾，台灣廠與中國廠皆顯示）
+    let execCardsHtml = "";
+    (orgData.executives || []).forEach(function (exec) {
+      if (orgChartState.filterRegion !== "all" && exec.region !== "all" && exec.region !== orgChartState.filterRegion) {
+        return;
+      }
+      execCardsHtml += '' +
+        '<div class="org-node-card exec-node">' +
+          '<div class="org-node-top">' +
+            '<span class="org-node-badge exec-badge">' + escapeHtml(exec.title) + '</span>' +
+          '</div>' +
+          '<div class="org-node-name">' + escapeHtml(exec.name) + '</div>' +
+          (exec.note ? '<div class="org-node-note">' + escapeHtml(exec.note) + '</div>' : '') +
+          (exec.jobId ? '<div style="margin-top: 6px;"><a href="#/job/' + exec.jobId + '" class="org-job-link-btn" title="查閱工作說明書">說明書 &nearr;</a></div>' : '') +
+          (exec.assistant ? '<div class="org-node-assistant">下轄助理：' + escapeHtml(exec.assistant) + '</div>' : '') +
+        '</div>';
+    });
+
+    let execSectionHtml = '';
+    if (execCardsHtml) {
+      execSectionHtml = '' +
+        '<div class="org-tree-section">' +
+          '<div class="org-tree-section-header">' +
+            '<h3 class="org-section-title">決策經營高層</h3>' +
+            '<span class="org-section-desc">公司最高核決決策階層與經營管理團隊（跨廠區統籌）</span>' +
+          '</div>' +
+          '<div class="org-exec-grid">' + execCardsHtml + '</div>' +
+        '</div>';
+    }
+
+    // 各部門層級卡片
+    let deptsHtml = "";
+    (orgData.departments || []).forEach(function (dept) {
+      let unitsHtml = "";
+      (dept.units || []).forEach(function (unit) {
+        if (orgChartState.filterRegion !== "all" && unit.region !== "all" && unit.region !== orgChartState.filterRegion) {
+          return;
+        }
+
+        let unitLeaderHtml = "";
+        if (unit.leader) {
+          unitLeaderHtml = '' +
+            '<div class="org-unit-leader">' +
+              '<span class="org-role-pill leader">' + escapeHtml(unit.leader.title) + '</span>' +
+              '<span class="org-leader-name">' + escapeHtml(unit.leader.name) + '</span>' +
+              (unit.leader.note ? '<span class="org-leader-note">(' + escapeHtml(unit.leader.note) + ')</span>' : '') +
+              (unit.leader.jobId ? '<a href="#/job/' + unit.leader.jobId + '" class="org-job-link-btn" title="查閱工作說明書">說明書 &nearr;</a>' : '') +
+            '</div>';
+        } else if (unit.leaders && unit.leaders.length > 0) {
+          unitLeaderHtml = '<div class="org-unit-leaders-wrap">';
+          unit.leaders.forEach(function (ld) {
+            unitLeaderHtml += '' +
+              '<div class="org-unit-leader">' +
+                '<span class="org-role-pill leader">' + escapeHtml(ld.title) + '</span>' +
+                '<span class="org-leader-name">' + escapeHtml(ld.name) + '</span>' +
+                (ld.note ? '<span class="org-leader-note">(' + escapeHtml(ld.note) + ')</span>' : '') +
+                (ld.jobId ? '<a href="#/job/' + ld.jobId + '" class="org-job-link-btn" title="查閱工作說明書">說明書 &nearr;</a>' : '') +
+              '</div>';
+          });
+          unitLeaderHtml += '</div>';
+        }
+
+        let membersHtml = "";
+        if (unit.members && unit.members.length > 0) {
+          membersHtml = '<div class="org-unit-members"><span class="org-sub-label">直屬同仁：</span>';
+          unit.members.forEach(function (m) {
+            membersHtml += '' +
+              '<span class="org-member-tag">' +
+                escapeHtml(m.name) +
+                (m.title ? ' (' + escapeHtml(m.title) + ')' : '') +
+                (m.note ? ' <small>' + escapeHtml(m.note) + '</small>' : '') +
+                (m.jobId ? '<a href="#/job/' + m.jobId + '" class="org-tag-link">&nearr;</a>' : '') +
+              '</span>';
+          });
+          membersHtml += '</div>';
+        }
+
+        let subLeadersHtml = "";
+        if (unit.subLeaders && unit.subLeaders.length > 0) {
+          subLeadersHtml = '<div class="org-unit-subleaders">';
+          unit.subLeaders.forEach(function (sl) {
+            subLeadersHtml += '' +
+              '<div class="org-subleader-item">' +
+                '<span class="org-role-pill subleader">' + escapeHtml(sl.title) + '</span>' +
+                '<span class="org-leader-name">' + escapeHtml(sl.name) + '</span>' +
+                (sl.note ? '<span class="org-leader-note">(' + escapeHtml(sl.note) + ')</span>' : '') +
+              '</div>';
+          });
+          subLeadersHtml += '</div>';
+        }
+
+        let sectionsHtml = "";
+        if (unit.sections && unit.sections.length > 0) {
+          sectionsHtml = '<div class="org-sections-grid">';
+          unit.sections.forEach(function (sec) {
+            let supervisorsHtml = "";
+            if (sec.supervisors && sec.supervisors.length > 0) {
+              sec.supervisors.forEach(function (sp) {
+                supervisorsHtml += '' +
+                  '<div class="org-supervisor-row">' +
+                    '<span class="org-role-pill supervisor">' + escapeHtml(sp.title) + '</span>' +
+                    '<span class="org-person-name">' + escapeHtml(sp.name) + '</span>' +
+                    (sp.jobId ? '<a href="#/job/' + sp.jobId + '" class="org-job-link-btn" title="查閱工作說明書">說明書 &nearr;</a>' : '') +
+                  '</div>';
+              });
+            }
+
+            let staffHtml = "";
+            if (sec.staff && sec.staff.length > 0) {
+              staffHtml = '<div class="org-staff-tags">';
+              sec.staff.forEach(function (st) {
+                if (typeof st === "string") {
+                  staffHtml += '<span class="org-staff-pill">' + escapeHtml(st) + '</span>';
+                } else {
+                  staffHtml += '' +
+                    '<span class="org-staff-pill' + (st.jobId ? ' has-job' : '') + '">' +
+                      escapeHtml(st.name) +
+                      (st.note ? ' <small>' + escapeHtml(st.note) + '</small>' : '') +
+                      (st.jobId ? '<a href="#/job/' + st.jobId + '" class="org-tag-link" title="工作說明書">&nearr;</a>' : '') +
+                    '</span>';
+                }
+              });
+              staffHtml += '</div>';
+            }
+
+            let foreignHtml = "";
+            if (sec.foreignStaff && sec.foreignStaff.length > 0) {
+              foreignHtml = '<div class="org-foreign-staff"><span class="org-sub-label">外籍技術團隊：</span>';
+              sec.foreignStaff.forEach(function (fs) {
+                const fsName = typeof fs === "string" ? fs : fs.name;
+                foreignHtml += '<span class="org-foreign-pill">' + escapeHtml(fsName) + '</span>';
+              });
+              foreignHtml += '</div>';
+            }
+
+            sectionsHtml += '' +
+              '<div class="org-section-card">' +
+                '<div class="org-section-card-title">' + escapeHtml(sec.sectionName) + '</div>' +
+                supervisorsHtml +
+                staffHtml +
+                foreignHtml +
+              '</div>';
+          });
+          sectionsHtml += '</div>';
+        }
+
+        unitsHtml += '' +
+          '<div class="org-unit-block">' +
+            '<div class="org-unit-header">' +
+              '<h4 class="org-unit-name">' + escapeHtml(unit.unitName) + '</h4>' +
+              '<span class="org-region-tag ' + unit.region + '">' + (unit.region === "tw" ? "台灣廠・樹億" : "中國廠體系") + '</span>' +
+            '</div>' +
+            unitLeaderHtml +
+            subLeadersHtml +
+            membersHtml +
+            sectionsHtml +
+          '</div>';
+      });
+
+      if (unitsHtml) {
+        deptsHtml += '' +
+          '<div class="org-tree-section">' +
+            '<div class="org-tree-section-header">' +
+              '<h3 class="org-section-title">' + escapeHtml(dept.name) + (dept.manager ? ' <span style="font-size: 0.88rem; font-weight: 600; color: var(--brand-primary); margin-left: 8px;">(統籌主管：' + escapeHtml(dept.manager) + ')</span>' : '') + '</h3>' +
+              '<span class="org-section-desc">' + escapeHtml(dept.description) + '</span>' +
+            '</div>' +
+            unitsHtml +
+          '</div>';
+      }
+    });
+
+    return '' +
+      '<div class="org-tree-wrapper">' +
+        filterBar +
+        execSectionHtml +
+        deptsHtml +
+      '</div>';
+  }
+
+  /**
+   * 畫布縮放與平移互動引擎（支援滑鼠滾輪、行動端觸控雙指縮放、單指平移與全螢幕）
+   */
+  function initCanvasPanZoom() {
+    const card = document.querySelector(".org-canvas-card");
+    const viewport = document.getElementById("orgCanvasViewport");
+    const stage = document.getElementById("orgCanvasStage");
+    const zoomLevelEl = document.getElementById("orgZoomLevel");
+    const btnIn = document.getElementById("orgZoomIn");
+    const btnOut = document.getElementById("orgZoomOut");
+    const btnReset = document.getElementById("orgZoomReset");
+    const btnFit = document.getElementById("orgZoomFit");
+    const btnFullscreen = document.getElementById("orgToggleFullscreen");
+
+    if (!viewport || !stage) return;
+
+    function applyTransform() {
+      stage.style.transform = "translate(" + orgChartState.panX + "px, " + orgChartState.panY + "px) scale(" + orgChartState.zoomScale + ")";
+      if (zoomLevelEl) {
+        zoomLevelEl.textContent = Math.round(orgChartState.zoomScale * 100) + "%";
+      }
+    }
+
+    function fitToViewport() {
+      const vpWidth = viewport.clientWidth || window.innerWidth || 1000;
+      const fitScale = Math.max(0.18, Math.min(1.2, (vpWidth - 32) / 2600));
+      orgChartState.zoomScale = fitScale;
+      orgChartState.panX = 16;
+      orgChartState.panY = 16;
+      applyTransform();
+    }
+
+    // 初次進入若為預設狀態，自動執行一次最適適配置中
+    if (orgChartState.panX === 0 && orgChartState.panY === 0 && orgChartState.zoomScale === 1) {
+      fitToViewport();
+    } else {
+      applyTransform();
+    }
+
+    if (btnIn) {
+      btnIn.addEventListener("click", function () {
+        orgChartState.zoomScale = Math.min(3.5, orgChartState.zoomScale + 0.15);
+        applyTransform();
+      });
+    }
+    if (btnOut) {
+      btnOut.addEventListener("click", function () {
+        orgChartState.zoomScale = Math.max(0.15, orgChartState.zoomScale - 0.15);
+        applyTransform();
+      });
+    }
+    if (btnReset) {
+      btnReset.addEventListener("click", function () {
+        orgChartState.zoomScale = 1.0;
+        orgChartState.panX = 0;
+        orgChartState.panY = 0;
+        applyTransform();
+      });
+    }
+    if (btnFit) {
+      btnFit.addEventListener("click", fitToViewport);
+    }
+
+    // 全螢幕切換控制（行動裝置與桌面端一鍵沉浸展開）
+    if (btnFullscreen && card) {
+      btnFullscreen.addEventListener("click", function () {
+        const isFs = card.classList.toggle("is-fullscreen");
+        btnFullscreen.textContent = isFs ? "退出全螢幕" : "全螢幕檢視";
+        btnFullscreen.classList.toggle("danger-outline", isFs);
+        btnFullscreen.classList.toggle("fullscreen-btn", !isFs);
+        setTimeout(fitToViewport, 80);
+      });
+
+      document.addEventListener("keydown", function escHandler(e) {
+        if (e.key === "Escape" && card.classList.contains("is-fullscreen")) {
+          card.classList.remove("is-fullscreen");
+          btnFullscreen.textContent = "全螢幕檢視";
+          btnFullscreen.classList.remove("danger-outline");
+          btnFullscreen.classList.add("fullscreen-btn");
+          setTimeout(fitToViewport, 80);
+        }
+      });
+    }
+
+    // 滑鼠滾輪縮放
+    viewport.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.12 : -0.12;
+      orgChartState.zoomScale = Math.max(0.15, Math.min(3.5, orgChartState.zoomScale + delta));
+      applyTransform();
+    }, { passive: false });
+
+    // 滑鼠拖曳平移
+    viewport.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      orgChartState.isDragging = true;
+      orgChartState.dragStartX = e.clientX - orgChartState.panX;
+      orgChartState.dragStartY = e.clientY - orgChartState.panY;
+      viewport.classList.add("dragging");
+    });
+
+    window.addEventListener("mousemove", function (e) {
+      if (!orgChartState.isDragging) return;
+      orgChartState.panX = e.clientX - orgChartState.dragStartX;
+      orgChartState.panY = e.clientY - orgChartState.dragStartY;
+      applyTransform();
+    });
+
+    window.addEventListener("mouseup", function () {
+      if (orgChartState.isDragging) {
+        orgChartState.isDragging = false;
+        viewport.classList.remove("dragging");
+      }
+    });
+
+    // 行動裝置觸控手勢（單指平移 ＋ 雙指捏合縮放 Pinch-to-zoom）
+    let initialTouchDistance = null;
+    let initialTouchScale = 1;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isTouching = false;
+
+    viewport.addEventListener("touchstart", function (e) {
+      if (e.touches.length === 1) {
+        isTouching = true;
+        touchStartX = e.touches[0].clientX - orgChartState.panX;
+        touchStartY = e.touches[0].clientY - orgChartState.panY;
+      } else if (e.touches.length === 2) {
+        isTouching = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        initialTouchDistance = Math.hypot(dx, dy);
+        initialTouchScale = orgChartState.zoomScale;
+      }
+    }, { passive: false });
+
+    viewport.addEventListener("touchmove", function (e) {
+      if (e.touches.length === 1 && isTouching) {
+        e.preventDefault();
+        orgChartState.panX = e.touches[0].clientX - touchStartX;
+        orgChartState.panY = e.touches[0].clientY - touchStartY;
+        applyTransform();
+      } else if (e.touches.length === 2 && initialTouchDistance) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const currentDistance = Math.hypot(dx, dy);
+        const factor = currentDistance / initialTouchDistance;
+        orgChartState.zoomScale = Math.max(0.15, Math.min(3.5, initialTouchScale * factor));
+        applyTransform();
+      }
+    }, { passive: false });
+
+    viewport.addEventListener("touchend", function (e) {
+      if (e.touches.length === 0) {
+        isTouching = false;
+        initialTouchDistance = null;
+      } else if (e.touches.length === 1) {
+        isTouching = true;
+        touchStartX = e.touches[0].clientX - orgChartState.panX;
+        touchStartY = e.touches[0].clientY - orgChartState.panY;
+        initialTouchDistance = null;
+      }
+    });
+
+    viewport.addEventListener("touchcancel", function () {
+      isTouching = false;
+      initialTouchDistance = null;
+    });
+  }
+
+  /**
+   * 樹狀模式廠區篩選切換
+   */
+  function initTreeFilterEvents(container) {
+    const filterBtns = container.querySelectorAll(".org-tree-filter-btns button");
+    filterBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const reg = btn.dataset.region || "all";
+        if (orgChartState.filterRegion !== reg) {
+          orgChartState.filterRegion = reg;
+          renderOrgChartContent(container);
+        }
+      });
+    });
+  }
+
+  /**
+   * 渲染公司組織圖入口分流
+   */
+  function renderOrgChart() {
+    const container = document.getElementById("orgChartContent");
+    if (!container) return;
+
+    if (!isOrgChartAuthorized()) {
+      renderOrgChartLockScreen(container);
+    } else {
+      renderOrgChartContent(container);
+    }
   }
 
   /**
@@ -976,20 +1767,116 @@ const App = (function () {
       });
     }
 
+    // 1. 搜尋輸入監聽（支援浮動下拉建議選單，不打斷詳細頁閱讀）
     const searchInput = document.getElementById("jobSearchInput");
+    const searchDropdown = document.getElementById("searchDropdown");
+
     if (searchInput) {
       searchInput.addEventListener("input", function (e) {
         state.searchQuery = e.target.value;
-        if (state.currentView !== "home" && state.currentView !== "dept_list" && state.searchQuery.trim() !== "") {
-          state.currentView = "dept_list";
-          state.activeFilter = "all";
-          state.currentJobId = null;
-          if (window.history && window.history.replaceState) {
-            window.history.replaceState(null, "", "#/dept/all");
+        const query = state.searchQuery.trim().toLowerCase();
+
+        if (!query) {
+          if (searchDropdown) {
+            searchDropdown.style.display = "none";
+            searchDropdown.innerHTML = "";
           }
-          renderCurrentView();
-        } else if (state.currentView === "home" || state.currentView === "dept_list") {
+          if (state.currentView === "home" || state.currentView === "dept_list") {
+            renderHomeJobs();
+          }
+          return;
+        }
+
+        // 搜尋匹配職位（支援職位名稱、所屬部門、工作項目、表單與管制重點）
+        const matches = [];
+        state.jobs.forEach(function (job) {
+          let matchReason = "";
+          const titleMatch = job.title && job.title.toLowerCase().indexOf(query) !== -1;
+          const deptMatch = job.dept && job.dept.toLowerCase().indexOf(query) !== -1;
+          const overviewMatch = job.overview && job.overview.toLowerCase().indexOf(query) !== -1;
+
+          let matchedTaskItem = "";
+          if (job.tasks && job.tasks.length > 0) {
+            for (let t = 0; t < job.tasks.length; t++) {
+              const task = job.tasks[t];
+              if (task.item && task.item.toLowerCase().indexOf(query) !== -1) {
+                matchedTaskItem = "工作項次：" + task.item;
+                break;
+              }
+              if (task.form && task.form.toLowerCase().indexOf(query) !== -1) {
+                matchedTaskItem = "使用表單：" + task.form;
+                break;
+              }
+              if (task.focus && task.focus.toLowerCase().indexOf(query) !== -1) {
+                matchedTaskItem = "管制重點：" + task.focus;
+                break;
+              }
+            }
+          }
+
+          if (titleMatch || deptMatch || overviewMatch || matchedTaskItem) {
+            matchReason = matchedTaskItem || (overviewMatch ? "核心職責相符" : (deptMatch ? job.dept : "職位名稱相符"));
+            matches.push({ job: job, matchReason: matchReason });
+          }
+        });
+
+        // 渲染浮動下拉結果（最多顯示 8 筆）
+        if (searchDropdown) {
+          if (matches.length > 0) {
+            let dropHtml = "";
+            matches.slice(0, 8).forEach(function (m) {
+              const j = m.job;
+              const deptName = getDeptNameByKey(getJobCategory(j));
+              dropHtml += '<a href="#/job/' + encodeURIComponent(j.id) + '" class="search-dropdown-item" data-job-id="' + escapeHtml(j.id) + '">' +
+                '<div class="search-item-main">' +
+                  '<div class="search-item-title">' + escapeHtml(j.title) + '</div>' +
+                  '<div class="search-item-match">' + escapeHtml(m.matchReason) + '</div>' +
+                '</div>' +
+                '<span class="search-item-dept">' + escapeHtml(deptName) + '</span>' +
+              '</a>';
+            });
+            searchDropdown.innerHTML = dropHtml;
+            searchDropdown.style.display = "block";
+          } else {
+            searchDropdown.innerHTML = '<div class="search-dropdown-empty">查無符合「' + escapeHtml(query) + '」的職位</div>';
+            searchDropdown.style.display = "block";
+          }
+        }
+
+        // 若目前在首頁或部門列表，才同步過濾下方卡片；若在詳細頁則不中斷閱讀
+        if (state.currentView === "home" || state.currentView === "dept_list") {
           renderHomeJobs();
+        }
+      });
+
+      // 點擊下拉項目時收起選單
+      if (searchDropdown) {
+        searchDropdown.addEventListener("click", function (e) {
+          const item = e.target.closest(".search-dropdown-item");
+          if (item) {
+            searchDropdown.style.display = "none";
+            searchInput.value = "";
+            state.searchQuery = "";
+          }
+        });
+      }
+
+      // 按 ESC 或點擊畫面空白處關閉下拉選單
+      document.addEventListener("click", function (e) {
+        const wrapper = e.target.closest(".topbar-search-wrapper");
+        if (!wrapper && searchDropdown) {
+          searchDropdown.style.display = "none";
+        }
+      });
+
+      searchInput.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && searchDropdown) {
+          searchDropdown.style.display = "none";
+          searchInput.value = "";
+          state.searchQuery = "";
+          if (state.currentView === "home" || state.currentView === "dept_list") {
+            renderHomeJobs();
+          }
         }
       });
     }
@@ -1055,235 +1942,40 @@ const App = (function () {
       });
     }
 
-    // 4. 管理員驗證與系統設定模組
-    const settingsBtn = document.getElementById("settingsBtn");
-    const settingsModal = document.getElementById("settingsModal");
-    const closeSettingsBtn = document.getElementById("closeSettingsBtn");
-    const saveSettingsBtn = document.getElementById("saveSettingsBtn");
-    const testSettingsBtn = document.getElementById("testSettingsBtn");
-    const gasUrlInput = document.getElementById("gasUrlInput");
-    const toggleGasUrlVisibilityBtn = document.getElementById("toggleGasUrlVisibilityBtn");
-    const refreshCacheBtn = document.getElementById("refreshCacheBtn");
-    const cacheControlResult = document.getElementById("cacheControlResult");
-    const logoutAdminBtn = document.getElementById("logoutAdminBtn");
-
-    const adminAuthModal = document.getElementById("adminAuthModal");
-    const closeAdminAuthBtn = document.getElementById("closeAdminAuthBtn");
-    const cancelAdminAuthBtn = document.getElementById("cancelAdminAuthBtn");
-    const submitAdminAuthBtn = document.getElementById("submitAdminAuthBtn");
-    const adminPinInput = document.getElementById("adminPinInput");
-    const adminAuthError = document.getElementById("adminAuthError");
-
-    function openSettingsModal() {
-      if (gasUrlInput) {
-        gasUrlInput.value = AppConfig.getGasUrl();
-        gasUrlInput.type = "password";
-      }
-      if (toggleGasUrlVisibilityBtn) {
-        toggleGasUrlVisibilityBtn.textContent = "顯示網址";
-      }
-      const testRes = document.getElementById("testConnectionResult");
-      if (testRes) testRes.textContent = "";
-      if (cacheControlResult) cacheControlResult.textContent = "";
-      renderDepartmentSpreadsheetsList();
-      if (settingsModal) settingsModal.classList.add("open");
-    }
-
-    function openAdminAuthModal() {
-      if (adminPinInput) adminPinInput.value = "";
-      if (adminAuthError) adminAuthError.textContent = "";
-      if (adminAuthModal) adminAuthModal.classList.add("open");
-      setTimeout(function () {
-        if (adminPinInput) adminPinInput.focus();
-      }, 100);
-    }
-
-    function closeAdminAuthModal() {
-      if (adminAuthModal) adminAuthModal.classList.remove("open");
-    }
-
-    function handleAdminAuthSubmit() {
-      const pin = adminPinInput ? adminPinInput.value.trim() : "";
-      if (!pin) {
-        if (adminAuthError) adminAuthError.textContent = "請輸入管理員通行碼";
-        return;
-      }
-      if (AppConfig.verifyAdminPin(pin)) {
-        closeAdminAuthModal();
-        applyAdminModeDisplay(true);
-        openSettingsModal();
+    // 4. 浮動回到最上方按鈕監聽 (減少滑鼠滾輪滑動)
+    const backToTopBtn = document.getElementById("backToTopBtn");
+    window.addEventListener("scroll", function () {
+      if (!backToTopBtn) return;
+      if (window.scrollY > 280) {
+        backToTopBtn.classList.add("visible");
       } else {
-        if (adminAuthError) adminAuthError.textContent = "通行碼錯誤，請重新輸入";
-        if (adminPinInput) {
-          adminPinInput.value = "";
-          adminPinInput.focus();
-        }
+        backToTopBtn.classList.remove("visible");
       }
-    }
+    }, { passive: true });
 
-    if (submitAdminAuthBtn) {
-      submitAdminAuthBtn.addEventListener("click", handleAdminAuthSubmit);
-    }
-    if (adminPinInput) {
-      adminPinInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") handleAdminAuthSubmit();
+    if (backToTopBtn) {
+      backToTopBtn.addEventListener("click", function () {
+        scrollToTop();
       });
     }
-    if (closeAdminAuthBtn) closeAdminAuthBtn.addEventListener("click", closeAdminAuthModal);
-    if (cancelAdminAuthBtn) cancelAdminAuthBtn.addEventListener("click", closeAdminAuthModal);
-    if (adminAuthModal) {
-      adminAuthModal.addEventListener("click", function (e) {
-        if (e.target === adminAuthModal) closeAdminAuthModal();
-      });
-    }
-
-    if (settingsBtn) {
-      settingsBtn.addEventListener("click", function () {
-        if (AppConfig.isAdminAuthenticated()) {
-          openSettingsModal();
-        } else {
-          openAdminAuthModal();
-        }
-      });
-    }
-
-    if (closeSettingsBtn && settingsModal) {
-      closeSettingsBtn.addEventListener("click", function () {
-        settingsModal.classList.remove("open");
-      });
-    }
-
-    if (settingsModal) {
-      settingsModal.addEventListener("click", function (e) {
-        if (e.target === settingsModal) {
-          settingsModal.classList.remove("open");
-        }
-      });
-    }
-
-    if (toggleGasUrlVisibilityBtn && gasUrlInput) {
-      toggleGasUrlVisibilityBtn.addEventListener("click", function () {
-        if (gasUrlInput.type === "password") {
-          gasUrlInput.type = "text";
-          toggleGasUrlVisibilityBtn.textContent = "隱藏網址";
-        } else {
-          gasUrlInput.type = "password";
-          toggleGasUrlVisibilityBtn.textContent = "顯示網址";
-        }
-      });
-    }
-
-    if (refreshCacheBtn) {
-      refreshCacheBtn.addEventListener("click", async function () {
-        if (cacheControlResult) {
-          cacheControlResult.textContent = "正在向後端要求重建雙層快照快取…";
-          cacheControlResult.style.color = "var(--text-muted)";
-        }
-        refreshCacheBtn.disabled = true;
-        const res = await JobApi.refreshBackendCache();
-        refreshCacheBtn.disabled = false;
-        if (cacheControlResult) {
-          cacheControlResult.textContent = res.message;
-          cacheControlResult.style.color = res.ok ? "var(--status-good)" : "var(--status-danger)";
-        }
-        if (res.ok) {
-          await refreshData(false);
-        }
-      });
-    }
-
-    if (logoutAdminBtn) {
-      logoutAdminBtn.addEventListener("click", function () {
-        AppConfig.setAdminAuthenticated(false);
-        applyAdminModeDisplay(false);
-        if (settingsModal) settingsModal.classList.remove("open");
-        alert("已成功退出管理員模式，設定入口已安全隱藏。");
-      });
-    }
-
-    if (saveSettingsBtn) {
-      saveSettingsBtn.addEventListener("click", async function () {
-        const newUrl = gasUrlInput ? gasUrlInput.value.trim() : "";
-        AppConfig.setGasUrl(newUrl);
-        settingsModal.classList.remove("open");
-        await refreshData(true);
-      });
-    }
-
-    if (testSettingsBtn) {
-      testSettingsBtn.addEventListener("click", async function () {
-        const testResEl = document.getElementById("testConnectionResult");
-        const val = gasUrlInput ? gasUrlInput.value.trim() : "";
-        testResEl.textContent = "正在測試連線中…";
-        testResEl.style.color = "var(--text-muted)";
-        const res = await JobApi.testConnection(val);
-        testResEl.textContent = res.message;
-        testResEl.style.color = res.ok ? "var(--status-good)" : "var(--status-danger)";
-      });
-    }
-
-    // 5. 隱藏式管理員觸發：Logo 連續點擊 5 次解鎖
-    const brandSection = document.querySelector(".brand-section");
-    let logoClickCount = 0;
-    let logoClickTimer = null;
-    if (brandSection) {
-      brandSection.addEventListener("click", function (e) {
-        logoClickCount++;
-        if (logoClickTimer) clearTimeout(logoClickTimer);
-        logoClickTimer = setTimeout(function () {
-          logoClickCount = 0;
-        }, 3000);
-
-        if (logoClickCount >= 5) {
-          logoClickCount = 0;
-          e.preventDefault();
-          if (AppConfig.isAdminAuthenticated()) {
-            openSettingsModal();
-          } else {
-            openAdminAuthModal();
-          }
-        }
-      });
-    }
-
-    // 6. 隱藏式管理員觸發：熱鍵 Ctrl + Shift + S
-    window.addEventListener("keydown", function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "S" || e.key === "s")) {
-        e.preventDefault();
-        if (AppConfig.isAdminAuthenticated()) {
-          openSettingsModal();
-        } else {
-          openAdminAuthModal();
-        }
-      }
-    });
   }
 
   /**
-   * 套用管理員按鈕顯示狀態
+   * 平滑滾動至頁面最上方
    */
-  function applyAdminModeDisplay(isAdmin) {
-    const settingsBtn = document.getElementById("settingsBtn");
-    if (!settingsBtn) return;
-    settingsBtn.style.display = isAdmin ? "inline-flex" : "none";
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   /**
-   * 頁面載入時檢查管理員狀態與網址參數
+   * 平滑滾動至課室晶片導覽列
    */
-  function checkAdminModeOnLoad() {
-    const isAuthed = AppConfig.isAdminAuthenticated();
-    applyAdminModeDisplay(isAuthed);
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const hasAdminQuery = urlParams.get("admin") === "true" || window.location.hash.indexOf("admin=true") !== -1;
-    if (hasAdminQuery) {
-      if (isAuthed) {
-        applyAdminModeDisplay(true);
-      } else {
-        const adminAuthModal = document.getElementById("adminAuthModal");
-        if (adminAuthModal) adminAuthModal.classList.add("open");
-      }
+  function scrollToAnchorNav() {
+    const nav = document.getElementById("sectionAnchorNav");
+    if (nav && nav.style.display !== "none") {
+      nav.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      scrollToTop();
     }
   }
 
@@ -1309,6 +2001,19 @@ const App = (function () {
   }
 
   /**
+   * 平滑滾動至指定課室錨點並觸發聚焦脈衝動畫
+   */
+  function scrollToSection(secId) {
+    const el = document.getElementById(secId);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.classList.remove("section-highlight-pulse");
+      void el.offsetWidth;
+      el.classList.add("section-highlight-pulse");
+    }
+  }
+
+  /**
    * HTML 標籤跳脫
    */
   function escapeHtml(text) {
@@ -1321,43 +2026,13 @@ const App = (function () {
       .replace(/'/g, "&#039;");
   }
 
-  /**
-   * 渲染設定彈窗中的各部門 Google 試算表直接編輯連結
-   */
-  function renderDepartmentSpreadsheetsList() {
-    const section = document.getElementById("departmentSpreadsheetsSection");
-    const listEl = document.getElementById("deptSpreadsheetsList");
-    if (!section || !listEl) return;
-
-    if (!state.departments || state.departments.length === 0) {
-      section.style.display = "none";
-      return;
-    }
-
-    section.style.display = "block";
-    let html = "";
-    state.departments.forEach(function (dept) {
-      const hasUrl = dept.url && dept.url.trim() !== "";
-      html += '<div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background-color: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 6px;">';
-      html += '  <div style="display: flex; flex-direction: column;">';
-      html += '    <span style="font-weight: 700; color: var(--text-main); font-size: 0.88rem;">' + escapeHtml(dept.name) + '</span>';
-      html += '    <span style="font-size: 0.76rem; color: var(--text-muted);">' + dept.sheetCount + ' 個工作表分頁</span>';
-      html += '  </div>';
-      if (hasUrl) {
-        html += '  <a href="' + escapeHtml(dept.url) + '" target="_blank" rel="noopener noreferrer" style="color: var(--brand-primary); font-weight: 600; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px; background-color: rgba(15, 118, 110, 0.08); border-radius: 4px;">開啟試算表 &rarr;</a>';
-      } else {
-        html += '  <span style="color: var(--text-muted); font-size: 0.78rem;">未設定網址</span>';
-      }
-      html += '</div>';
-    });
-
-    listEl.innerHTML = html;
-  }
-
   return {
     init: init,
     refreshData: refreshData,
-    copyShareLink: copyShareLink
+    copyShareLink: copyShareLink,
+    scrollToSection: scrollToSection,
+    scrollToTop: scrollToTop,
+    scrollToAnchorNav: scrollToAnchorNav
   };
 })();
 
