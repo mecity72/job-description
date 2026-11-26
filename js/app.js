@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 工作說明書系統 - 前端主控制器 (Main App Controller)
  * 負責路由解析、資料渲染、搜尋過濾、模組互動與主題切換
  */
@@ -1308,12 +1308,12 @@ const App = (function () {
             '</div>' +
             '<div class="org-toolbar-hints">' +
               '<span>提示：手機支援單指拖曳平移、雙指捏合縮放，點擊「全螢幕檢視」視野最佳</span>' +
-              '<a href="resource/org_chart_clean.svg?v=20261119_v5" target="_blank" class="org-tool-btn primary-outline" style="margin-left: 10px;">新分頁開啟原始向量圖 &nearr;</a>' +
+              '<a href="resource/org_chart_clean.svg?v=20261126_v1" target="_blank" class="org-tool-btn primary-outline" style="margin-left: 10px;">新分頁開啟原始向量圖 &nearr;</a>' +
             '</div>' +
           '</div>' +
           '<div class="org-canvas-viewport" id="orgCanvasViewport">' +
             '<div class="org-canvas-stage" id="orgCanvasStage">' +
-              '<img src="resource/org_chart_clean.svg?v=20261119_v5" id="orgSvgImage" class="org-svg-render" alt="公司組織架構圖" draggable="false" />' +
+              '<img src="resource/org_chart_clean.svg?v=20261126_v1" id="orgSvgImage" class="org-svg-render" alt="公司組織架構圖" draggable="false" />' +
             '</div>' +
           '</div>' +
         '</div>';

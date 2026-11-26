@@ -4,7 +4,7 @@
  */
 
 const JobApi = (function () {
-  const STORAGE_SNAPSHOT_KEY = "JD_PERSISTED_SNAPSHOT_V2";
+  const STORAGE_SNAPSHOT_KEY = "JD_PERSISTED_SNAPSHOT_V3";
 
   let connectionStatus = "offline";
   let cachedJobs = null;
@@ -162,6 +162,7 @@ const JobApi = (function () {
    */
   async function syncSingleJob(jobId, onJobUpdated) {
     if (!jobId) return;
+    if (jobId === "wh_operator_a" || jobId === "wh_operator_b") jobId = "wh_operator";
     const gasUrl = AppConfig.getGasUrl();
     if (!gasUrl || gasUrl.trim() === "") return;
 
@@ -181,7 +182,7 @@ const JobApi = (function () {
       if (!response.ok) return;
 
       const resData = await response.json();
-      if (resData && resData.status === "success" && resData.job && resData.job.id === jobId) {
+      if (resData && resData.status === "success" && resData.job && (resData.job.id === jobId || (resData.job.id === "wh_operator" && (jobId === "wh_operator_a" || jobId === "wh_operator_b")))) {
         if (!cachedJobs) {
           cachedJobs = getInitialJobs();
         }
@@ -230,6 +231,8 @@ const JobApi = (function () {
       reportsTo: remote.reportsTo || local.reportsTo,
       workLocation: (remote.workLocation !== undefined && remote.workLocation !== null && remote.workLocation !== "") ? remote.workLocation : local.workLocation,
       shift: (remote.shift !== undefined && remote.shift !== null && remote.shift !== "") ? remote.shift : local.shift,
+      deputy: (remote.deputy !== undefined && remote.deputy !== null && remote.deputy !== "") ? remote.deputy : local.deputy,
+      emergencyRole: (remote.emergencyRole !== undefined && remote.emergencyRole !== null && remote.emergencyRole !== "") ? remote.emergencyRole : local.emergencyRole,
       overview: (remote.overview !== undefined && remote.overview !== null && remote.overview !== "") ? remote.overview : local.overview,
       qualifications: (remote.qualifications !== undefined && remote.qualifications !== null && remote.qualifications !== "") ? remote.qualifications : local.qualifications,
       certificates: (remote.certificates !== undefined && remote.certificates !== null && remote.certificates !== "") ? remote.certificates : local.certificates,
@@ -246,7 +249,13 @@ const JobApi = (function () {
     if (!localJobs || localJobs.length === 0) return remoteJobs || [];
     const jobMap = {};
     (remoteJobs || []).forEach(function (rj) {
-      if (rj && rj.id) jobMap[rj.id] = rj;
+      if (rj && rj.id) {
+        jobMap[rj.id] = rj;
+        if (rj.id === "wh_operator") {
+          jobMap["wh_operator_a"] = rj;
+          jobMap["wh_operator_b"] = rj;
+        }
+      }
     });
 
     return localJobs.map(function (lj) {

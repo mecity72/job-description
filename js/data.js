@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 工作說明書系統 - 預設資料庫 (Default Data Store)
  * 包含 33 個職位（製造部 17 個、技術部 7 個、營業部 3 個、管理部 4 個、人資總務部 2 個）
  * 以及職等對照表、升遷制度、績效考核評等
@@ -954,7 +954,7 @@ const DEFAULT_JOBS = [
 const DEFAULT_ORG_CHART = {
   meta: {
     title: "公司組織架構圖",
-    svgPath: "resource/org_chart_clean.svg?v=20261119_v5",
+    svgPath: "resource/org_chart_clean.svg?v=20261126_v1",
     updatedAt: "2026-11-19"
   },
   companies: [
